@@ -67,7 +67,8 @@ public sealed class FileSignatureDetector
 
     public static async ValueTask<byte[]> ReadPrefixAsync(Stream stream, int maxBytes, CancellationToken cancellationToken)
     {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
+        if (maxBytes <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxBytes), maxBytes, "Value must be positive.");
 
         var position = stream.CanSeek ? stream.Position : 0;
         var buffer = new byte[maxBytes];
