@@ -108,9 +108,13 @@ public static class ExtensionResolver
         return e switch
         {
             "jpeg" => "jpg",
+            "jpg" => "jpeg",
             "tif" => "tiff",
+            "tiff" => "tif",
             "htm" => "html",
+            "html" => "htm",
             "mpeg" => "mpg",
+            "mpg" => "mpeg",
             _ => e
         };
     }
