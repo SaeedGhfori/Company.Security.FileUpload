@@ -10,7 +10,7 @@ namespace Company.Security.FileUpload.Tests;
 
 public class PipelineSecurityTests
 {
-    private static FileUploadPipeline NewPipeline() => TestPolicy.BuildPipeline();
+    private static IFileUploadPipeline NewPipeline() => TestPolicy.BuildPipeline();
 
     // OWASP: File size limits / Validate actual file type (allowlist)
     [Fact]

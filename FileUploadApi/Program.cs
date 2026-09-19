@@ -3,11 +3,9 @@ using Company.Security.FileUpload.Pipeline;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSingleton<FileUploadPipeline>(sp =>
-    new FileUploadPipelineBuilder()
-        .UseDefaultDetection()
-        .WithDefaultValidators()
-        .Build());
+builder.Services.AddFileUploadPipeline(b => b
+    .UseDefaultDetection()
+    .WithDefaultValidators());
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

@@ -36,7 +36,7 @@ internal static class TestPolicy
         };
     }
 
-    public static FileUploadPipeline BuildPipeline(IMalwareScanner? scanner = null)
+    public static IFileUploadPipeline BuildPipeline(IMalwareScanner? scanner = null)
     {
         var builder = new FileUploadPipelineBuilder()
             .UseDefaultDetection()

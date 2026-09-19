@@ -22,7 +22,7 @@ public sealed class FileContentValidator : IFileValidator
             var suspect = MimeDetector.IsSuspectMime(request.DeclaredMimeType, detectedType.DetectedMimeType);
             if (suspect)
             {
-                string message = $"The declared MIME type '{request.DeclaredMimeType}' does not match the detected content.";
+                string message = "The declared MIME type does not match the detected content.";
 
                 if (policy.ExtensionMismatchPolicy == ExtensionMismatchPolicy.Reject)
                     errors.Add(new FileValidationError(FileValidationErrorCode.MimeMismatchWithSignature, message));
@@ -33,8 +33,8 @@ public sealed class FileContentValidator : IFileValidator
 
         if (request.DeclaredFileSize is > 0 && stream.CanSeek)
         {
-            var actual = StreamHelper.GetLength(stream);
-            if (actual >= 0 && actual != request.DeclaredFileSize.Value)
+            var actual = stream.Length;
+            if (actual != request.DeclaredFileSize.Value)
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.FileTooLarge,

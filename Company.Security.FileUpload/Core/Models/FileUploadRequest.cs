@@ -13,4 +13,6 @@ public sealed class FileUploadRequest
     public long? DeclaredFileSize { get; init; }
 
     public FileUploadPolicy? Policy { get; init; }
+
+    public CancellationToken CancellationToken { get; init; }
 }

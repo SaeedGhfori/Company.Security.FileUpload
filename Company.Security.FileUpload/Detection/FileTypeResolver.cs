@@ -178,6 +178,10 @@ public sealed class FileTypeResolver : IFileDetectionService
         {
             return null;
         }
+        catch (Exception)
+        {
+            return null;
+        }
         finally
         {
             if (stream.CanSeek)
@@ -194,7 +198,6 @@ public sealed class FileTypeResolver : IFileDetectionService
             return null;
 
         using var entryStream = entry.Open();
-        using var memory = new MemoryStream();
         var buffer = ArrayPool<byte>.Shared.Rent(Math.Min(maxBytes, 8192));
         var readTotal = 0;
 
@@ -205,7 +208,6 @@ public sealed class FileTypeResolver : IFileDetectionService
                 var read = entryStream.Read(buffer, 0, Math.Min(buffer.Length, maxBytes - readTotal));
                 if (read == 0)
                     break;
-                memory.Write(buffer, 0, read);
                 readTotal += read;
             }
         }
@@ -214,7 +216,12 @@ public sealed class FileTypeResolver : IFileDetectionService
             ArrayPool<byte>.Shared.Return(buffer);
         }
 
-        return memory.ToArray();
+        if (readTotal == 0)
+            return Array.Empty<byte>();
+
+        var result = new byte[readTotal];
+        buffer.AsSpan(0, readTotal).CopyTo(result);
+        return result;
     }
 
     private static FileSignature? TryDetectOleStorageType(byte[] prefix)
@@ -243,8 +250,11 @@ public sealed class FileTypeResolver : IFileDetectionService
     private static FileTypeInfo BuildFromSignature(FileSignature signature, string? declaredExtension, string? declaredMimeType, byte[] prefix)
     {
         var matchedBytes = signature.Signature.Length > 0
-            ? signature.Signature.ToArray()
+            ? new byte[signature.Signature.Length]
             : Array.Empty<byte>();
+
+        if (matchedBytes.Length > 0)
+            signature.Signature.CopyTo(matchedBytes);
 
         return Finalize(new FileTypeInfo
         {

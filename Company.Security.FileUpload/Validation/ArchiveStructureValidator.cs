@@ -41,6 +41,11 @@ public sealed class ArchiveStructureValidator : IFileValidator
             return Task.FromResult(FileValidationResult.Failure(
                 new FileValidationError(FileValidationErrorCode.StructureZipInvalid, "The archive structure is invalid or corrupted.", ex)));
         }
+        catch (Exception ex) when (ex is IOException or ArgumentException or InvalidOperationException)
+        {
+            return Task.FromResult(FileValidationResult.Failure(
+                new FileValidationError(FileValidationErrorCode.StructureZipInvalid, "The archive structure is invalid or corrupted.", ex)));
+        }
     }
 
     private static FileValidationResult ValidateZipStructure(Stream stream, FileTypeInfo detectedType, FileUploadPolicy policy, CancellationToken cancellationToken)
@@ -57,7 +62,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.StructureZipTooManyEntries,
-                    $"The archive contains {archive.Entries.Count} entries which exceeds the allowed maximum of {policy.ArchiveMaxEntries}."));
+                    $"The archive contains too many entries."));
                 return FileValidationResult.Failure(errors);
             }
 
@@ -72,7 +77,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
                 {
                     errors.Add(new FileValidationError(
                         FileValidationErrorCode.StructureZipPathTraversal,
-                        $"The archive contains an entry with an unsafe path: '{entry.FullName}'."));
+                        "The archive contains an entry with an unsafe path."));
                     continue;
                 }
 
@@ -83,7 +88,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
                 {
                     errors.Add(new FileValidationError(
                         FileValidationErrorCode.StructureZipBombDetected,
-                        $"The total uncompressed size ({totalUncompressed} bytes) exceeds the allowed limit of {policy.ArchiveMaxExtractedSize} bytes."));
+                        "The total extracted size exceeds the allowed limit."));
                     return FileValidationResult.Failure(errors);
                 }
             }
@@ -95,7 +100,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.StructureZipBombDetected,
-                    $"The total uncompressed size ({totalUncompressed} bytes) exceeds the allowed limit of {policy.ArchiveMaxExtractedSize} bytes."));
+                    "The total extracted size exceeds the allowed limit."));
             }
             else if (totalUncompressed > ZipBombMinimumAbsoluteSize &&
                      totalCompressed > 0 &&
@@ -152,16 +157,16 @@ public sealed class ArchiveStructureValidator : IFileValidator
         try
         {
             using var entryStream = entry.Open();
-            using var buffer = new MemoryStream();
-            var chunk = ArrayPool<byte>.Shared.Rent(8192);
+            var buffer = ArrayPool<byte>.Shared.Rent(NestedArchiveReadLimit);
+            using var bufferStream = new MemoryStream();
             var total = 0;
             int read;
 
             try
             {
-                while ((read = entryStream.Read(chunk, 0, Math.Min(chunk.Length, NestedArchiveReadLimit - total))) > 0)
+                while ((read = entryStream.Read(buffer, 0, Math.Min(buffer.Length, NestedArchiveReadLimit - total))) > 0)
                 {
-                    buffer.Write(chunk, 0, read);
+                    bufferStream.Write(buffer, 0, read);
                     total += read;
                     if (total >= NestedArchiveReadLimit)
                         break;
@@ -169,12 +174,12 @@ public sealed class ArchiveStructureValidator : IFileValidator
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(chunk);
+                ArrayPool<byte>.Shared.Return(buffer);
             }
 
-            buffer.Position = 0;
+            bufferStream.Position = 0;
 
-            using var nested = new ZipArchive(buffer, ZipArchiveMode.Read, leaveOpen: false);
+            using var nested = new ZipArchive(bufferStream, ZipArchiveMode.Read, leaveOpen: false);
             var nestedContainers = nested.Entries
                 .Where(e => NestedContainerExtensions.Any(ext => e.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
                 .ToList();

@@ -1,25 +1,20 @@
 using Company.Security.FileUpload;
 using Company.Security.FileUpload.Core.Enums;
+using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
-using Company.Security.FileUpload.Core.Policies;
-using Company.Security.FileUpload.Detection;
-using Company.Security.FileUpload.Pipeline;
-using Microsoft.AspNetCore.Authorization;
+using System.IO;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FileUploadApi.Controllers;
 
-/// <summary>
-/// مدیریت آپلود و اعتبارسنجی فایل‌ها
-/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class FilesController : ControllerBase
 {
-    private readonly FileUploadPipeline _pipeline;
+    private readonly IFileUploadPipeline _pipeline;
 
-    public FilesController(FileUploadPipeline pipeline)
+    public FilesController(IFileUploadPipeline pipeline)
     {
         _pipeline = pipeline;
     }
@@ -69,9 +64,6 @@ public class FilesController : ControllerBase
         AllowFileWithoutExtension = false
     };
 
-    /// <summary>
-    /// آپلود تصویر با بررسی امن
-    /// </summary>
     [HttpPost("upload/image")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -81,14 +73,14 @@ public class FilesController : ControllerBase
             return BadRequest(new FileValidationResult
             {
                 IsValid = false,
-                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "فایل انتخاب نشده است") }
+                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "No file selected") }
             });
 
         if (!file.ContentType!.StartsWith("image/"))
             return BadRequest(new FileValidationResult
             {
                 IsValid = false,
-                Errors = new[] { new FileValidationError(FileValidationErrorCode.ExtensionNotAllowed, "فرمت فایل باید تصویر باشد") }
+                Errors = new[] { new FileValidationError(FileValidationErrorCode.ExtensionNotAllowed, "File format must be an image") }
             });
 
         var request = new FileUploadRequest
@@ -97,7 +89,8 @@ public class FilesController : ControllerBase
             OriginalFileName = file.FileName,
             DeclaredMimeType = file.ContentType,
             DeclaredFileSize = file.Length,
-            Policy = ImagePolicy
+            Policy = ImagePolicy,
+            CancellationToken = HttpContext.RequestAborted
         };
 
         var result = await _pipeline.ProcessAsync(request);
@@ -108,9 +101,6 @@ public class FilesController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// آپلود فایل با پالیسی مستند
-    /// </summary>
     [HttpPost("upload/document")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -120,7 +110,7 @@ public class FilesController : ControllerBase
             return BadRequest(new FileValidationResult
             {
                 IsValid = false,
-                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "فایل انتخاب نشده است") }
+                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "No file selected") }
             });
 
         var request = new FileUploadRequest
@@ -129,7 +119,8 @@ public class FilesController : ControllerBase
             OriginalFileName = file.FileName,
             DeclaredMimeType = file.ContentType,
             DeclaredFileSize = file.Length,
-            Policy = DocumentPolicy
+            Policy = DocumentPolicy,
+            CancellationToken = HttpContext.RequestAborted
         };
 
         var result = await _pipeline.ProcessAsync(request);
@@ -140,9 +131,6 @@ public class FilesController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// آپلود آرشیو با بررسی امنیتی
-    /// </summary>
     [HttpPost("upload/archive")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -152,15 +140,15 @@ public class FilesController : ControllerBase
             return BadRequest(new FileValidationResult
             {
                 IsValid = false,
-                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "فایل انتخاب نشده است") }
+                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "No file selected") }
             });
 
-        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var extension = System.IO.Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!ArchivePolicy.AllowedExtensions.Contains(extension))
             return BadRequest(new FileValidationResult
             {
                 IsValid = false,
-                Errors = new[] { new FileValidationError(FileValidationErrorCode.ExtensionNotAllowed, "پسوند باید zip یا rar باشد") }
+                Errors = new[] { new FileValidationError(FileValidationErrorCode.ExtensionNotAllowed, "Extension must be zip, rar, or similar") }
             });
 
         var request = new FileUploadRequest
@@ -169,7 +157,8 @@ public class FilesController : ControllerBase
             OriginalFileName = file.FileName,
             DeclaredMimeType = file.ContentType,
             DeclaredFileSize = file.Length,
-            Policy = ArchivePolicy
+            Policy = ArchivePolicy,
+            CancellationToken = HttpContext.RequestAborted
         };
 
         var result = await _pipeline.ProcessAsync(request);
@@ -180,9 +169,6 @@ public class FilesController : ControllerBase
         return Ok(result);
     }
 
-    /// <summary>
-    /// آپلود با حجم بیش از حد مجاز
-    /// </summary>
     [HttpPost("upload/large")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -192,7 +178,7 @@ public class FilesController : ControllerBase
             return BadRequest(new FileValidationResult
             {
                 IsValid = false,
-                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "فایل انتخاب نشده است") }
+                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "No file selected") }
             });
 
         const long maxSize = 1 * 1024 * 1024;
@@ -201,7 +187,7 @@ public class FilesController : ControllerBase
             return BadRequest(new FileValidationResult
             {
                 IsValid = false,
-                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileTooLarge, $"حجم فایل ({file.Length} بایت) بیش از حد مجاز ({maxSize} بایت) است") }
+                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileTooLarge, $"File size ({file.Length} bytes) exceeds maximum ({maxSize} bytes)") }
             });
 
         var request = new FileUploadRequest
@@ -210,7 +196,8 @@ public class FilesController : ControllerBase
             OriginalFileName = file.FileName,
             DeclaredMimeType = file.ContentType,
             DeclaredFileSize = file.Length,
-            Policy = DocumentPolicy
+            Policy = DocumentPolicy,
+            CancellationToken = HttpContext.RequestAborted
         };
 
         var result = await _pipeline.ProcessAsync(request);

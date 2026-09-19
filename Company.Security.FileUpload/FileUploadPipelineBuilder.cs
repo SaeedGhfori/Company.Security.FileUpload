@@ -1,3 +1,4 @@
+using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
 using Company.Security.FileUpload.Detection;
@@ -6,7 +7,7 @@ using Company.Security.FileUpload.Validation;
 
 namespace Company.Security.FileUpload;
 
-public sealed class FileUploadPipelineBuilder
+public sealed class FileUploadPipelineBuilder : IFileUploadPipelineBuilder
 {
     private readonly List<IFileValidator> _validators = new();
     private IFileDetectionService? _detectionService;
@@ -28,25 +29,25 @@ public sealed class FileUploadPipelineBuilder
         return this;
     }
 
-    public FileUploadPipelineBuilder UseDefaultDetection()
+    public IFileUploadPipelineBuilder UseDefaultDetection()
     {
         _detectionService = new FileTypeResolver();
         return this;
     }
 
-    public FileUploadPipelineBuilder UseMalwareScanner(IMalwareScanner scanner)
+    public IFileUploadPipelineBuilder UseMalwareScanner(IMalwareScanner? scanner)
     {
         _malwareScanner = scanner;
         return this;
     }
 
-    public FileUploadPipelineBuilder AddValidator(IFileValidator validator)
+    public IFileUploadPipelineBuilder AddValidator(IFileValidator validator)
     {
         _validators.Add(validator);
         return this;
     }
 
-    public FileUploadPipelineBuilder WithDefaultValidators()
+    public IFileUploadPipelineBuilder WithDefaultValidators()
     {
         _validators.Clear();
         _validators.Add(FileNameValidator);
@@ -70,4 +71,6 @@ public sealed class FileUploadPipelineBuilder
 
         return new FileUploadPipeline(detection, _validators, _malwareScanner);
     }
+
+    IFileUploadPipeline IFileUploadPipelineBuilder.Build() => Build();
 }

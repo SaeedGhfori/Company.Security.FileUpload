@@ -374,7 +374,36 @@ internal static class TestFixtures
             OriginalFileName = fileName,
             DeclaredMimeType = mimeType,
             DeclaredFileSize = declaredSize,
-            Policy = policy ?? TestPolicy.Default
+            Policy = policy ?? TestPolicy.Default,
+            CancellationToken = CancellationToken.None
+        };
+    }
+
+    public static FileUploadRequest RequestNonSeekable(byte[] content, string fileName, FileUploadPolicy? policy = null)
+    {
+        var ms = new MemoryStream(content);
+        var nonSeekable = new NonSeekableStream(ms);
+        return new FileUploadRequest
+        {
+            FileStream = nonSeekable,
+            OriginalFileName = fileName,
+            DeclaredMimeType = null,
+            DeclaredFileSize = null,
+            Policy = policy ?? TestPolicy.Default,
+            CancellationToken = CancellationToken.None
+        };
+    }
+
+    public static FileUploadRequest RequestWithCancellationToken(byte[] content, string fileName, CancellationToken ct, FileUploadPolicy? policy = null)
+    {
+        return new FileUploadRequest
+        {
+            FileStream = new MemoryStream(content),
+            OriginalFileName = fileName,
+            DeclaredMimeType = null,
+            DeclaredFileSize = null,
+            Policy = policy ?? TestPolicy.Default,
+            CancellationToken = ct
         };
     }
 

@@ -18,6 +18,10 @@ public sealed record FileUploadPolicy
 
     public long MinFileSizeBytes { get; init; }
 
+    public long MaxMemoryFileSizeBytes { get; init; } = int.MaxValue;
+
+    public int TempFileThresholdBytes { get; init; } = 10 * 1024 * 1024;
+
     public bool RequireStructureValidation { get; init; } = true;
 
     public bool RequireMalwareScan { get; init; }

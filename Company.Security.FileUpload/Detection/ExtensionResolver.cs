@@ -1,5 +1,4 @@
 using System.Text;
-using System.Web;
 
 namespace Company.Security.FileUpload.Detection;
 
@@ -118,9 +117,12 @@ public static class ExtensionResolver
 
     public static string DecodeUrlEncoding(string input)
     {
+        if (!input.Contains('%'))
+            return input;
+
         try
         {
-            return HttpUtility.UrlDecode(input);
+            return Uri.EscapeDataString(Uri.UnescapeDataString(input));
         }
         catch
         {

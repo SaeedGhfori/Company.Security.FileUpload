@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.IO;
+using Microsoft.Extensions.Logging;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
@@ -9,16 +10,18 @@ using Company.Security.FileUpload.Detection;
 
 namespace Company.Security.FileUpload.Pipeline;
 
-public sealed class FileUploadPipeline
+public sealed class FileUploadPipeline : IFileUploadPipeline
 {
     private readonly IFileDetectionService _detectionService;
     private readonly IReadOnlyList<IFileValidator> _validators;
     private readonly IMalwareScanner? _malwareScanner;
+    private readonly ILogger? _logger;
 
     public FileUploadPipeline(
         IFileDetectionService detectionService,
         IEnumerable<IFileValidator> validators,
-        IMalwareScanner? malwareScanner = null)
+        IMalwareScanner? malwareScanner = null,
+        ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(detectionService);
         ArgumentNullException.ThrowIfNull(validators);
@@ -26,6 +29,7 @@ public sealed class FileUploadPipeline
         _detectionService = detectionService;
         _validators = validators.ToArray();
         _malwareScanner = malwareScanner;
+        _logger = logger;
     }
 
     public async Task<FileValidationResult> ProcessAsync(FileUploadRequest request, CancellationToken cancellationToken = default)

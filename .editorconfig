@@ -1,0 +1,105 @@
+# EditorConfig for Company.Security.FileUpload
+# https://editorconfig.org
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.cs]
+dotnet_diagnostic.CS8618.severity = warning
+dotnet_diagnostic.CS8625.severity = warning
+dotnet_diagnostic.CS8602.severity = warning
+dotnet_diagnostic.CS8604.severity = warning
+dotnet_diagnostic.CS8603.severity = warning
+dotnet_diagnostic.CS8601.severity = warning
+dotnet_diagnostic.CS8600.severity = warning
+dotnet_diagnostic.CS8622.severity = warning
+dotnet_diagnostic.CS8629.severity = warning
+dotnet_diagnostic.CS8600.severity = warning
+dotnet_diagnostic.CS8981.severity = silent
+dotnet_diagnostic.CS9130.severity = silent
+dotnet_diagnostic.IDE0005.severity = warning
+dotnet_diagnostic.IDE0008.severity = warning
+dotnet_diagnostic.IDE0019.severity = warning
+dotnet_diagnostic.IDE0040.severity = warning
+dotnet_diagnostic.IDE0060.severity = warning
+dotnet_diagnostic.IDE0220.severity = warning
+dotnet_diagnostic.IDE0250.severity = warning
+dotnet_diagnostic.IDE0270.severity = warning
+dotnet_diagnostic.IDE0043.severity = warning
+dotnet_diagnostic.CA1050.severity = silent
+dotnet_diagnostic.CA1039.severity = silent
+dotnet_diagnostic.CA1062.severity = warning
+dotnet_diagnostic.CA2007.severity = warning
+dotnet_diagnostic.CA2016.severity = warning
+dotnet_diagnostic.CA2101.severity = warning
+dotnet_diagnostic.CA2254.severity = warning
+dotnet_diagnostic.CA1822.severity = warning
+dotnet_diagnostic.CA1816.severity = warning
+dotnet_diagnostic.CA1303.severity = warning
+dotnet_diagnostic.CA1307.severity = warning
+dotnet_diagnostic.CA1822.severity = warning
+dotnet_diagnostic.CA2211.severity = warning
+dotnet_diagnostic.CA2000.severity = warning
+dotnet_diagnostic.CA2201.severity = warning
+dotnet_diagnostic.CA2012.severity = warning
+dotnet_diagnostic.CA2015.severity = warning
+dotnet_diagnostic.CA1031.severity = warning
+dotnet_diagnostic.CA1502.severity = warning
+dotnet_diagnostic.CA1508.severity = warning
+dotnet_diagnostic.CA1509.severity = warning
+dotnet_diagnostic.CA1717.severity = warning
+dotnet_diagnostic.CA1716.severity = warning
+dotnet_diagnostic.CA1816.severity = warning
+dotnet_diagnostic.CA1822.severity = warning
+dotnet_diagnostic.CA1822.severity = warning
+dotnet_diagnostic.CA1822.severity = warning
+dotnet_diagnostic.CA2007.severity = warning
+dotnet_diagnostic.CA2254.severity = warning
+dotnet_diagnostic.CA1303.severity = warning
+dotnet_diagnostic.CA1307.severity = warning
+dotnet_diagnostic.IDE0060.severity = warning
+dotnet_diagnostic.IDE0220.severity = warning
+dotnet_diagnostic.IDE0250.severity = warning
+dotnet_diagnostic.IDE0270.severity = warning
+dotnet_diagnostic.IDE0043.severity = warning
+dotnet_diagnostic.RS1024.severity = warning
+dotnet_diagnostic.CA1303.severity = warning
+dotnet_diagnostic.CA1307.severity = warning
+dotnet_diagnostic.CA2007.severity = warning
+dotnet_diagnostic.CA2254.severity = warning
+dotnet_diagnostic.CA1822.severity = warning
+dotnet_diagnostic.CA2012.severity = warning
+dotnet_diagnostic.CA1062.severity = warning
+dotnet_diagnostic.CA2211.severity = warning
+dotnet_diagnostic.CA2000.severity = warning
+dotnet_diagnostic.CA2201.severity = warning
+dotnet_diagnostic.CA1816.severity = warning
+dotnet_diagnostic.CA1031.severity = warning
+dotnet_diagnostic.CA1502.severity = warning
+dotnet_diagnostic.CA1508.severity = warning
+dotnet_diagnostic.CA1509.severity = warning
+dotnet_diagnostic.CA1717.severity = warning
+dotnet_diagnostic.CA1716.severity = warning
+
+[*.{cs,csx}]
+dotnet_analyzer_diagnostic.category-Performance.severity = warning
+dotnet_analyzer_diagnostic.category-Usage.severity = warning
+dotnet_analyzer_diagnostic.category-Reliability.severity = warning
+dotnet_analyzer_diagnostic.category-Security.severity = warning
+dotnet_analyzer_diagnostic.category-Style.severity = warning
+
+[*.csproj]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.yml]
+indent_size = 2

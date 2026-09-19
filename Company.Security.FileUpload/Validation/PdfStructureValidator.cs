@@ -86,7 +86,8 @@ public sealed class PdfStructureValidator : IFileValidator
             stream.Position = originalPosition;
         }
 
-        var result = buffer.AsSpan(0, total).ToArray();
+        var result = new byte[total];
+        buffer.AsSpan(0, total).CopyTo(result);
         ArrayPool<byte>.Shared.Return(buffer);
         return result;
     }

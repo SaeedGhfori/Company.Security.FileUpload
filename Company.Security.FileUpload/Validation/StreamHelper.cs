@@ -2,7 +2,7 @@ using System.Buffers;
 
 namespace Company.Security.FileUpload.Validation;
 
-internal static class StreamHelper
+public static class StreamHelper
 {
     public static async Task<byte[]> ReadPrefixAsync(Stream stream, int maxBytes, CancellationToken cancellationToken)
     {
@@ -26,7 +26,8 @@ internal static class StreamHelper
                 stream.Position = position;
         }
 
-        var result = buffer.AsSpan(0, total).ToArray();
+        var result = new byte[total];
+        buffer.AsSpan(0, total).CopyTo(result);
         ArrayPool<byte>.Shared.Return(buffer);
         return result;
     }
@@ -39,6 +40,6 @@ internal static class StreamHelper
         if (stream is MemoryStream memory)
             return memory.Length;
 
-        return -1;
+        return stream.Position;
     }
 }
