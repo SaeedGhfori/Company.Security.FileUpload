@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Company.Security.FileUpload\Company.Security.FileUpload.csproj" />
+    <ProjectReference Include="..\Company.Security.FileUpload.Tests\Company.Security.FileUpload.Tests.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
