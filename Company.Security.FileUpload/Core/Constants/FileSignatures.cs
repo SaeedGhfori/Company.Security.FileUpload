@@ -25,8 +25,8 @@ public static class FileSignatures
             new() { FormatName = "BMP", Category = FileTypeCategory.Image, Extension = ".bmp", MimeType = "image/bmp", Signature = new byte[] { 0x42, 0x4D }, Offset = 0, Priority = 10 },
             new() { FormatName = "TIFF", Category = FileTypeCategory.Image, Extension = ".tiff", MimeType = "image/tiff", Signature = new byte[] { 0x49, 0x49, 0x2A, 0x00 }, Offset = 0, Priority = 10 },
             new() { FormatName = "TIFF", Category = FileTypeCategory.Image, Extension = ".tiff", MimeType = "image/tiff", Signature = new byte[] { 0x4D, 0x4D, 0x00, 0x2A }, Offset = 0, Priority = 10 },
-            new() { FormatName = "WEBP", Category = FileTypeCategory.Image, Extension = ".webp", MimeType = "image/webp", TextPattern = "WEBP", TextPatternSearchEnd = 32, Priority = 20 },
-            new() { FormatName = "SVG", Category = FileTypeCategory.Svg, Extension = ".svg", MimeType = "image/svg+xml", TextPattern = "<svg", TextPatternSearchEnd = 512, Priority = 20 },
+            new() { FormatName = "WEBP", Category = FileTypeCategory.Image, Extension = ".webp", MimeType = "image/webp", TextPattern = "WEBP", TextPatternBytes = Encoding.ASCII.GetBytes("WEBP"), TextPatternSearchEnd = 32, Priority = 20 },
+            new() { FormatName = "SVG", Category = FileTypeCategory.Svg, Extension = ".svg", MimeType = "image/svg+xml", TextPattern = "<svg", TextPatternBytes = Encoding.ASCII.GetBytes("<svg"), TextPatternSearchEnd = 512, Priority = 20 },
 
             new() { FormatName = "MKV", Category = FileTypeCategory.Video, Extension = ".mkv", MimeType = "video/x-matroska", Signature = new byte[] { 0x1A, 0x45, 0xDF, 0xA3 }, Offset = 0, Priority = 20 },
 
@@ -34,13 +34,13 @@ public static class FileSignatures
             new() { FormatName = "FLAC", Category = FileTypeCategory.Audio, Extension = ".flac", MimeType = "audio/flac", Signature = new byte[] { 0x66, 0x4C, 0x61, 0x43 }, Offset = 0, Priority = 20 },
             new() { FormatName = "OGG", Category = FileTypeCategory.Audio, Extension = ".ogg", MimeType = "audio/ogg", Signature = new byte[] { 0x4F, 0x67, 0x67, 0x53 }, Offset = 0, Priority = 20 },
 
-            new() { FormatName = "PDF", Category = FileTypeCategory.Document, Extension = ".pdf", MimeType = "application/pdf", TextPattern = "%PDF-", TextPatternSearchEnd = 16, Priority = 30 },
-            new() { FormatName = "XML", Category = FileTypeCategory.Text, Extension = ".xml", MimeType = "application/xml", TextPattern = "<?xml", TextPatternSearchEnd = 128, Priority = 30 },
+            new() { FormatName = "PDF", Category = FileTypeCategory.Document, Extension = ".pdf", MimeType = "application/pdf", TextPattern = "%PDF-", TextPatternBytes = Encoding.ASCII.GetBytes("%PDF-"), TextPatternSearchEnd = 16, Priority = 30 },
+            new() { FormatName = "XML", Category = FileTypeCategory.Text, Extension = ".xml", MimeType = "application/xml", TextPattern = "<?xml", TextPatternBytes = Encoding.ASCII.GetBytes("<?xml"), TextPatternSearchEnd = 128, Priority = 30 },
 
             new() { FormatName = "ZIP", Category = FileTypeCategory.Archive, Extension = ".zip", MimeType = "application/zip", Signature = ZipLocalHeader, Offset = 0, Priority = 30 },
             new() { FormatName = "ZIP-EMPTY", Category = FileTypeCategory.Archive, Extension = ".zip", MimeType = "application/zip", Signature = ZipEmptyHeader, Offset = 0, Priority = 30 },
             new() { FormatName = "7Z", Category = FileTypeCategory.Archive, Extension = ".7z", MimeType = "application/x-7z-compressed", Signature = new byte[] { 0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C }, Offset = 0, Priority = 30 },
-            new() { FormatName = "TAR", Category = FileTypeCategory.Archive, Extension = ".tar", MimeType = "application/x-tar", TextPattern = "ustar", TextPatternSearchEnd = 262, Priority = 30 },
+            new() { FormatName = "TAR", Category = FileTypeCategory.Archive, Extension = ".tar", MimeType = "application/x-tar", TextPattern = "ustar", TextPatternBytes = Encoding.ASCII.GetBytes("ustar"), TextPatternSearchEnd = 262, Priority = 30 },
             new() { FormatName = "GZIP", Category = FileTypeCategory.Archive, Extension = ".gz", MimeType = "application/gzip", Signature = new byte[] { 0x1F, 0x8B }, Offset = 0, Priority = 30 },
 
             new() { FormatName = "OLE-CFB", Category = FileTypeCategory.Binary, Extension = ".doc", MimeType = "application/x-ole-storage", Signature = new byte[] { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 }, Offset = 0, Priority = 40 },

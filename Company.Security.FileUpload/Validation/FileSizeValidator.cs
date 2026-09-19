@@ -1,6 +1,7 @@
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
+using System.Buffers;
 
 namespace Company.Security.FileUpload.Validation;
 
@@ -58,13 +59,21 @@ public sealed class FileSizeValidator : IFileValidator
         }
 
         var bytesRead = 0L;
-        var buffer = new byte[8192];
+        var buffer = ArrayPool<byte>.Shared.Rent(8192);
+        var bufferSize = Math.Min(buffer.Length, 8192);
         int read;
-        while ((read = await stream.ReadAsync(buffer, cancellationToken)) > 0)
+        try
         {
-            bytesRead += read;
-            if (bytesRead > limitPlusOne)
-                return (bytesRead, false);
+            while ((read = await stream.ReadAsync(new Memory<byte>(buffer, 0, bufferSize), cancellationToken)) > 0)
+            {
+                bytesRead += read;
+                if (bytesRead > limitPlusOne)
+                    return (bytesRead, false);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         return (bytesRead, true);

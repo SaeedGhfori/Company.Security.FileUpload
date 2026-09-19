@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO.Compression;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
@@ -144,16 +145,23 @@ public sealed class ArchiveStructureValidator : IFileValidator
         {
             using var entryStream = entry.Open();
             using var buffer = new MemoryStream();
-            var chunk = new byte[8192];
+            var chunk = ArrayPool<byte>.Shared.Rent(8192);
             var total = 0;
             int read;
 
-            while ((read = entryStream.Read(chunk, 0, Math.Min(chunk.Length, NestedArchiveReadLimit - total))) > 0)
+            try
             {
-                buffer.Write(chunk, 0, read);
-                total += read;
-                if (total >= NestedArchiveReadLimit)
-                    break;
+                while ((read = entryStream.Read(chunk, 0, Math.Min(chunk.Length, NestedArchiveReadLimit - total))) > 0)
+                {
+                    buffer.Write(chunk, 0, read);
+                    total += read;
+                    if (total >= NestedArchiveReadLimit)
+                        break;
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(chunk);
             }
 
             buffer.Position = 0;

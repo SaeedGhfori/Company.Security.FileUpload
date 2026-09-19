@@ -4,15 +4,15 @@ using Company.Security.FileUpload.Detection;
 
 namespace Company.Security.FileUpload.Core.Policies;
 
-public sealed class PolicyEngine
+public static class PolicyEngine
 {
-    public FileValidationResult Evaluate(FileTypeInfo detectedType, long fileSizeBytes, CancellationToken cancellationToken = default)
+    public static FileValidationResult Evaluate(FileTypeInfo detectedType, long fileSizeBytes, FileUploadPolicy policy, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         var errors = new List<FileValidationError>();
+        var warnings = new List<string>();
 
-        var policy = _policy;
         if (policy is null)
         {
             errors.Add(new FileValidationError(FileValidationErrorCode.PolicyViolation, "No policy provided."));
@@ -70,10 +70,10 @@ public sealed class PolicyEngine
                     case ExtensionMismatchPolicy.Reject:
                         errors.Add(new FileValidationError(
                             FileValidationErrorCode.ExtensionMismatch,
-                            $"File extension '{dotted(detectedType.DeclaredExtension)}' does not match the actual type '{detectedType.DetectedExtension}'."));
+                            $"File extension '{Dotted(detectedType.DeclaredExtension)}' does not match the actual type '{detectedType.DetectedExtension}'."));
                         break;
                     case ExtensionMismatchPolicy.Warn:
-                        _warnings.Add($"File extension '{dotted(detectedType.DeclaredExtension)}' does not match the detected type '{detectedType.DetectedExtension}'.");
+                        warnings.Add($"File extension '{Dotted(detectedType.DeclaredExtension)}' does not match the detected type '{detectedType.DetectedExtension}'.");
                         break;
                 }
             }
@@ -97,7 +97,7 @@ public sealed class PolicyEngine
             ? FileValidationResult.Success(detectedType, fileSizeBytes)
             : FileValidationResult.Failure(errors);
 
-        foreach (var warning in _warnings)
+        foreach (var warning in warnings)
         {
             result = result.AddWarning(warning);
         }
@@ -105,16 +105,6 @@ public sealed class PolicyEngine
         return result;
     }
 
-    public PolicyEngine With(FileUploadPolicy policy)
-    {
-        _policy = policy;
-        _warnings.Clear();
-        return this;
-    }
-
-    private FileUploadPolicy? _policy;
-    private readonly List<string> _warnings = new();
-
-    private static string dotted(string extension)
+    private static string Dotted(string extension)
         => extension.StartsWith('.') ? extension : "." + extension;
 }

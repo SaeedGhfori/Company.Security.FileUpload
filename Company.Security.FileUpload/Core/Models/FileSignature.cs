@@ -18,6 +18,8 @@ public sealed class FileSignature
 
     public string? TextPattern { get; init; }
 
+    public byte[]? TextPatternBytes { get; init; }
+
     public int TextPatternSearchEnd { get; init; }
 
     public bool IsRequired { get; init; } = true;

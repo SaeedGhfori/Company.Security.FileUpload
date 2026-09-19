@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
@@ -67,13 +68,14 @@ public sealed class PdfStructureValidator : IFileValidator
         var originalPosition = stream.Position;
         stream.Position = startOffset;
 
-        var buffer = new byte[Math.Min(maxBytes, length)];
+        var buffer = ArrayPool<byte>.Shared.Rent((int)Math.Min(maxBytes, length));
+        var bufferLength = (int)Math.Min(maxBytes, length);
         var total = 0;
         try
         {
-            while (total < buffer.Length)
+            while (total < bufferLength)
             {
-                var read = await stream.ReadAsync(buffer.AsMemory(total, buffer.Length - total), cancellationToken);
+                var read = await stream.ReadAsync(new Memory<byte>(buffer, total, bufferLength - total), cancellationToken);
                 if (read == 0)
                     break;
                 total += read;
@@ -82,8 +84,9 @@ public sealed class PdfStructureValidator : IFileValidator
         finally
         {
             stream.Position = originalPosition;
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
-        return total == buffer.Length ? buffer : buffer.AsSpan(0, total).ToArray();
+        return total == bufferLength ? buffer : buffer.AsSpan(0, total).ToArray();
     }
 }

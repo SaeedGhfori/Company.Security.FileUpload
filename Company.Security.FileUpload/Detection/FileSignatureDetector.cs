@@ -48,13 +48,13 @@ public sealed class FileSignatureDetector
                         best = signature;
                 }
             }
-            else if (signature.TextPattern is not null)
+            else if (signature.TextPatternBytes is not null)
             {
                 var searchEnd = signature.TextPatternSearchEnd > 0
                     ? Math.Min(signature.TextPatternSearchEnd, prefix.Length)
                     : prefix.Length;
 
-                if (ContainsAscii(prefix.AsSpan(0, searchEnd), signature.TextPattern))
+                if (prefix.AsSpan(0, searchEnd).IndexOf(signature.TextPatternBytes.AsSpan()) >= 0)
                 {
                     if (best is null || signature.Priority > best.Priority)
                         best = signature;
@@ -71,7 +71,7 @@ public sealed class FileSignatureDetector
             throw new ArgumentOutOfRangeException(nameof(maxBytes), maxBytes, "Value must be positive.");
 
         var position = stream.CanSeek ? stream.Position : 0;
-        var buffer = new byte[maxBytes];
+        var buffer = ArrayPool<byte>.Shared.Rent(maxBytes);
         var total = 0;
 
         try
@@ -88,22 +88,9 @@ public sealed class FileSignatureDetector
         {
             if (stream.CanSeek)
                 stream.Position = position;
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         return total == maxBytes ? buffer : buffer.AsSpan(0, total).ToArray();
-    }
-
-    private static bool ContainsAscii(ReadOnlySpan<byte> data, string text)
-    {
-        if (text.Length == 0 || data.Length < text.Length)
-            return false;
-
-        for (var i = 0; i <= data.Length - text.Length; i++)
-        {
-            if (data[i] == (byte)text[0] && data.Slice(i, text.Length).SequenceEqual(System.Text.Encoding.ASCII.GetBytes(text)))
-                return true;
-        }
-
-        return false;
     }
 }

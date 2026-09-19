@@ -12,6 +12,16 @@ public sealed class FileUploadPipelineBuilder
     private IFileDetectionService? _detectionService;
     private IMalwareScanner? _malwareScanner;
 
+    private static readonly FileNameValidator FileNameValidator = new();
+    private static readonly FileExtensionValidator FileExtensionValidator = new();
+    private static readonly FileSizeValidator FileSizeValidator = new();
+    private static readonly FileSignatureValidator FileSignatureValidator = new();
+    private static readonly FileContentValidator FileContentValidator = new();
+    private static readonly ImageStructureValidator ImageStructureValidator = new();
+    private static readonly PdfStructureValidator PdfStructureValidator = new();
+    private static readonly ArchiveStructureValidator ArchiveStructureValidator = new();
+    private static readonly OfficeStructureValidator OfficeStructureValidator = new();
+
     public FileUploadPipelineBuilder UseDetection(IFileDetectionService detectionService)
     {
         _detectionService = detectionService;
@@ -39,15 +49,15 @@ public sealed class FileUploadPipelineBuilder
     public FileUploadPipelineBuilder WithDefaultValidators()
     {
         _validators.Clear();
-        _validators.Add(new FileNameValidator());
-        _validators.Add(new FileExtensionValidator());
-        _validators.Add(new FileSizeValidator());
-        _validators.Add(new FileSignatureValidator());
-        _validators.Add(new FileContentValidator());
-        _validators.Add(new ImageStructureValidator());
-        _validators.Add(new PdfStructureValidator());
-        _validators.Add(new ArchiveStructureValidator());
-        _validators.Add(new OfficeStructureValidator());
+        _validators.Add(FileNameValidator);
+        _validators.Add(FileExtensionValidator);
+        _validators.Add(FileSizeValidator);
+        _validators.Add(FileSignatureValidator);
+        _validators.Add(FileContentValidator);
+        _validators.Add(ImageStructureValidator);
+        _validators.Add(PdfStructureValidator);
+        _validators.Add(ArchiveStructureValidator);
+        _validators.Add(OfficeStructureValidator);
         return this;
     }
 

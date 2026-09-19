@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO.Compression;
 using System.Text;
 using Company.Security.FileUpload.Core.Enums;
@@ -194,16 +195,23 @@ public sealed class FileTypeResolver : IFileDetectionService
 
         using var entryStream = entry.Open();
         using var memory = new MemoryStream();
-        var buffer = new byte[Math.Min(maxBytes, 8192)];
+        var buffer = ArrayPool<byte>.Shared.Rent(Math.Min(maxBytes, 8192));
         var readTotal = 0;
 
-        while (readTotal < maxBytes)
+        try
         {
-            var read = entryStream.Read(buffer, 0, Math.Min(buffer.Length, maxBytes - readTotal));
-            if (read == 0)
-                break;
-            memory.Write(buffer, 0, read);
-            readTotal += read;
+            while (readTotal < maxBytes)
+            {
+                var read = entryStream.Read(buffer, 0, Math.Min(buffer.Length, maxBytes - readTotal));
+                if (read == 0)
+                    break;
+                memory.Write(buffer, 0, read);
+                readTotal += read;
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
         }
 
         return memory.ToArray();

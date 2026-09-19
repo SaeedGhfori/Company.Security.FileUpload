@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Diagnostics;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
@@ -56,7 +57,7 @@ public sealed class FileUploadPipeline
         }
 
         var fileSize = GetSize(stream, policy);
-        var policyResult = new PolicyEngine().With(policy).Evaluate(detectedType, fileSize, cancellationToken);
+        var policyResult = PolicyEngine.Evaluate(detectedType, fileSize, policy, cancellationToken);
         errors.AddRange(policyResult.Errors);
 
         var finalResult = errors.Count == 0
@@ -158,7 +159,8 @@ public sealed class FileUploadPipeline
             return source;
 
         var buffer = new MemoryStream();
-        var chunk = new byte[8192];
+        var chunk = ArrayPool<byte>.Shared.Rent(8192);
+        var chunkSize = Math.Min(chunk.Length, 8192);
         var total = 0L;
         var limit = policy.MaxFileSizeBytes + 1;
 
@@ -166,7 +168,7 @@ public sealed class FileUploadPipeline
         {
             while (total <= limit)
             {
-                var read = await source.ReadAsync(chunk, cancellationToken);
+                var read = await source.ReadAsync(new Memory<byte>(chunk, 0, (int)Math.Min(chunkSize, limit - total)), cancellationToken);
                 if (read == 0)
                     break;
                 await buffer.WriteAsync(chunk.AsMemory(0, read), cancellationToken);
@@ -177,6 +179,7 @@ public sealed class FileUploadPipeline
         {
             if (source.CanSeek)
                 source.Position = 0;
+            ArrayPool<byte>.Shared.Return(chunk);
         }
 
         if (total > policy.MaxFileSizeBytes)
