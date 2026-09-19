@@ -299,4 +299,76 @@ public class PipelineSecurityTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => NewPipeline().ProcessAsync(request, cts.Token));
     }
+
+    // Security Test 1: Multiple extensions attack
+    [Fact]
+    public async Task InvoicePdfExe_Rejected_MultipleExtensions()
+    {
+        var policy = TestPolicy.AllowExtensions(".pdf", ".exe");
+        var request = TestFixtures.Request(TestFixtures.ExeHeader(), "invoice.pdf.exe", policy);
+        var result = await NewPipeline().ProcessAsync(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.ExtensionMultipleDetected);
+    }
+
+    // Security Test 2: Extension mismatch attack (EXE content named as .pdf)
+    [Fact]
+    public async Task InvoicePdf_ExeContent_Rejected_ExtensionMismatch()
+    {
+        var policy = TestPolicy.AllowExtensions(".pdf");
+        var request = TestFixtures.Request(TestFixtures.ExeHeader(), "invoice.pdf", policy);
+        var result = await NewPipeline().ProcessAsync(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.ExtensionMismatch);
+    }
+
+    // Security Test 3: Path traversal attack
+    [Fact]
+    public async Task PathTraversal_Rejected()
+    {
+        var policy = TestPolicy.AllowExtensions(".aspx");
+        var request = TestFixtures.Request(TestFixtures.RandomUnknown(), "../../../../wwroot/shell.aspx", policy);
+        var result = await NewPipeline().ProcessAsync(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.FileNamePathTraversalDetected);
+    }
+
+    // Security Test 4: URL-encoded path traversal bypass
+    [Fact]
+    public async Task UrlEncodedPathTraversal_Rejected()
+    {
+        var policy = TestPolicy.AllowExtensions(".aspx");
+        var request = TestFixtures.Request(TestFixtures.RandomUnknown(), "..%2F..%2F..%2Fwwroot%2Fshell.aspx", policy);
+        var result = await NewPipeline().ProcessAsync(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.FileNamePathTraversalDetected);
+    }
+
+    // Security Test 5: Null byte injection bypass
+    [Fact]
+    public async Task NullByteInjection_Rejected()
+    {
+        var policy = TestPolicy.AllowExtensions(".pdf");
+        var request = TestFixtures.Request(TestFixtures.Pdf(), "invoice.pdf\0.exe", policy);
+        var result = await NewPipeline().ProcessAsync(request);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.FileNameContainsNullBytes);
+    }
+
+    // Control Test: Valid PDF accepted
+    [Fact]
+    public async Task ValidPdf_Accepted()
+    {
+        var policy = TestPolicy.AllowExtensions(".pdf");
+        var request = TestFixtures.Request(TestFixtures.Pdf(), "report.pdf", policy);
+        var result = await NewPipeline().ProcessAsync(request);
+
+        Assert.True(result.IsValid);
+        Assert.Equal("PDF", result.DetectedFileType!.FormatName);
+    }
 }
