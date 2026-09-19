@@ -13,5 +13,7 @@ public interface IFileUploadPipelineBuilder
     IFileUploadPipelineBuilder WithDefaultValidators();
     IFileUploadPipelineBuilder AddValidator(IFileValidator validator);
     IFileUploadPipelineBuilder UseMalwareScanner(IMalwareScanner? scanner);
+    IFileUploadPipelineBuilder SetMaxConcurrentValidations(int count);
+    IFileUploadPipelineBuilder SetMaxQueuedValidations(int count);
     IFileUploadPipeline Build();
 }

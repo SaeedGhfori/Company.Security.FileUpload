@@ -12,6 +12,8 @@ public sealed class FileUploadPipelineBuilder : IFileUploadPipelineBuilder
     private readonly List<IFileValidator> _validators = new();
     private IFileDetectionService? _detectionService;
     private IMalwareScanner? _malwareScanner;
+    private int _maxConcurrentValidations = 32;
+    private int _maxQueuedValidations = 32;
 
     private static readonly FileNameValidator FileNameValidator = new();
     private static readonly FileExtensionValidator FileExtensionValidator = new();
@@ -38,6 +40,18 @@ public sealed class FileUploadPipelineBuilder : IFileUploadPipelineBuilder
     public IFileUploadPipelineBuilder UseMalwareScanner(IMalwareScanner? scanner)
     {
         _malwareScanner = scanner;
+        return this;
+    }
+
+    public IFileUploadPipelineBuilder SetMaxConcurrentValidations(int count)
+    {
+        _maxConcurrentValidations = count;
+        return this;
+    }
+
+    public IFileUploadPipelineBuilder SetMaxQueuedValidations(int count)
+    {
+        _maxQueuedValidations = count;
         return this;
     }
 
@@ -69,7 +83,9 @@ public sealed class FileUploadPipelineBuilder : IFileUploadPipelineBuilder
         if (_validators.Count == 0)
             WithDefaultValidators();
 
-        return new FileUploadPipeline(detection, _validators, _malwareScanner);
+        return new FileUploadPipeline(detection, _validators, _malwareScanner,
+            maxConcurrentValidations: _maxConcurrentValidations,
+            maxQueuedValidations: _maxQueuedValidations);
     }
 
     IFileUploadPipeline IFileUploadPipelineBuilder.Build() => Build();

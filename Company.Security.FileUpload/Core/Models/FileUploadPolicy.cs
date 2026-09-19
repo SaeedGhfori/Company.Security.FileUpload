@@ -61,4 +61,6 @@ public sealed record FileUploadPolicy
     public int SignatureReadLimitBytes { get; init; } = 8 * 1024;
 
     public int StructureReadLimitBytes { get; init; } = 256 * 1024;
+
+    public int MaxConcurrentUploads { get; init; } = 10;
 }
