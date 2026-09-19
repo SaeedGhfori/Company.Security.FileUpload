@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Diagnostics;
+using System.IO;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
@@ -35,58 +36,68 @@ public sealed class FileUploadPipeline
         var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
         var stopwatch = Stopwatch.StartNew();
 
-        var stream = await EnsureSeekableAsync(request.FileStream, policy, cancellationToken);
+        var (stream, shouldDispose) = await EnsureSeekableAsync(request.FileStream, policy, cancellationToken);
 
-        cancellationToken.ThrowIfCancellationRequested();
-        stream.Position = 0;
-
-        var detectedType = await _detectionService.DetectAsync(
-            stream,
-            declaredExtension: ExtensionResolver.Normalize(request.OriginalFileName),
-            declaredMimeType: request.DeclaredMimeType,
-            cancellationToken);
-
-        var errors = new List<FileValidationError>();
-
-        foreach (var validator in _validators)
+        try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            stream.Position = 0;
 
-            var validatorResult = await validator.ValidateAsync(stream, detectedType, request, cancellationToken);
-            errors.AddRange(validatorResult.Errors);
-        }
+            var detectedType = await _detectionService.DetectAsync(
+                stream,
+                declaredExtension: ExtensionResolver.Normalize(request.OriginalFileName),
+                declaredMimeType: request.DeclaredMimeType,
+                cancellationToken);
 
-        var fileSize = GetSize(stream, policy);
-        var policyResult = PolicyEngine.Evaluate(detectedType, fileSize, policy, cancellationToken);
-        errors.AddRange(policyResult.Errors);
+            var errors = new List<FileValidationError>();
 
-        var finalResult = errors.Count == 0
-            ? FileValidationResult.Success(detectedType, fileSize)
-            : FileValidationResult.Failure(errors);
-
-        foreach (var warning in policyResult.Warnings)
-            finalResult = finalResult.AddWarning(warning);
-
-        if (finalResult.IsValid && policy.RequireMalwareScan)
-        {
-            var (scanBlocked, scanRecord) = await RunMalwareScanAsync(stream, policy, finalResult, cancellationToken);
-            if (scanBlocked is not null)
+            foreach (var validator in _validators)
             {
-                finalResult = scanBlocked;
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var validatorResult = await validator.ValidateAsync(stream, detectedType, request, cancellationToken);
+                errors.AddRange(validatorResult.Errors);
             }
 
-            if (scanRecord is not null)
+            var fileSize = GetSize(stream, policy);
+            var policyResult = PolicyEngine.Evaluate(detectedType, fileSize, policy, cancellationToken);
+            errors.AddRange(policyResult.Errors);
+
+            var finalResult = errors.Count == 0
+                ? FileValidationResult.Success(detectedType, fileSize)
+                : FileValidationResult.Failure(errors);
+
+            foreach (var warning in policyResult.Warnings)
+                finalResult = finalResult.AddWarning(warning);
+
+            if (finalResult.IsValid && policy.RequireMalwareScan)
             {
-                finalResult = finalResult with { MalwareScanResult = scanRecord.Status };
+                var (scanBlocked, scanRecord) = await RunMalwareScanAsync(stream, policy, finalResult, cancellationToken);
+                if (scanBlocked is not null)
+                {
+                    finalResult = scanBlocked;
+                }
+
+                if (scanRecord is not null)
+                {
+                    finalResult = finalResult with { MalwareScanResult = scanRecord.Status };
+                }
+            }
+
+            finalResult = finalResult with
+            {
+                ValidationDuration = stopwatch.Elapsed
+            };
+
+            return finalResult;
+        }
+        finally
+        {
+            if (shouldDispose)
+            {
+                stream.Dispose();
             }
         }
-
-        finalResult = finalResult with
-        {
-            ValidationDuration = stopwatch.Elapsed
-        };
-
-        return finalResult;
     }
 
     private async Task<(FileValidationResult? Blocked, MalwareScanResult? ScanRecord)> RunMalwareScanAsync(Stream stream, FileUploadPolicy policy, FileValidationResult current, CancellationToken cancellationToken)
@@ -153,12 +164,14 @@ public sealed class FileUploadPipeline
         return stream.Position;
     }
 
-    private static async Task<Stream> EnsureSeekableAsync(Stream source, FileUploadPolicy policy, CancellationToken cancellationToken)
+    private static async Task<(Stream Stream, bool ShouldDispose)> EnsureSeekableAsync(Stream source, FileUploadPolicy policy, CancellationToken cancellationToken)
     {
         if (source.CanSeek)
-            return source;
+            return (source, false);
 
-        var buffer = new MemoryStream();
+        var tempPath = Path.GetTempFileName();
+        var buffer = new FileStream(tempPath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
+            FileShare.None, 4096, FileOptions.DeleteOnClose);
         var chunk = ArrayPool<byte>.Shared.Rent(8192);
         var chunkSize = Math.Min(chunk.Length, 8192);
         var total = 0L;
@@ -177,18 +190,10 @@ public sealed class FileUploadPipeline
         }
         finally
         {
-            if (source.CanSeek)
-                source.Position = 0;
             ArrayPool<byte>.Shared.Return(chunk);
         }
 
-        if (total > policy.MaxFileSizeBytes)
-        {
-            buffer.Position = 0;
-            return buffer;
-        }
-
         buffer.Position = 0;
-        return buffer;
+        return (buffer, true);
     }
 }
