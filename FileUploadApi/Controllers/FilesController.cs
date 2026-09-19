@@ -1,3 +1,4 @@
+using Company.Security.FileUpload;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Models;
 using Company.Security.FileUpload.Core.Policies;
@@ -23,11 +24,54 @@ public class FilesController : ControllerBase
         _pipeline = pipeline;
     }
 
+    private static readonly FileUploadPolicy ImagePolicy = new()
+    {
+        PolicyName = "ImageUpload",
+        AllowedCategories = FileTypeCategory.Image,
+        AllowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".tiff" },
+        MaxFileSizeBytes = 10 * 1024 * 1024,
+        MaxImageWidth = 4000,
+        MaxImageHeight = 4000,
+        MaxPixelCount = 16_000_000,
+        ExtensionMismatchPolicy = ExtensionMismatchPolicy.Reject,
+        UnknownFilePolicy = UnknownFilePolicy.Reject,
+        RequireStructureValidation = true,
+        AllowMultipleExtensions = false,
+        AllowFileWithoutExtension = false
+    };
+
+    private static readonly FileUploadPolicy ArchivePolicy = new()
+    {
+        PolicyName = "ArchiveUpload",
+        AllowedCategories = FileTypeCategory.Archive,
+        AllowedExtensions = new[] { ".zip", ".rar", ".7z", ".gz", ".tar", ".tgz" },
+        MaxFileSizeBytes = 100 * 1024 * 1024,
+        ArchiveMaxEntries = 1000,
+        ArchiveMaxDepth = 5,
+        ArchiveMaxExtractedSize = 500 * 1024 * 1024,
+        ExtensionMismatchPolicy = ExtensionMismatchPolicy.Reject,
+        UnknownFilePolicy = UnknownFilePolicy.Reject,
+        RequireStructureValidation = true,
+        AllowMultipleExtensions = false,
+        AllowFileWithoutExtension = false
+    };
+
+    private static readonly FileUploadPolicy DocumentPolicy = new()
+    {
+        PolicyName = "DocumentUpload",
+        AllowedCategories = FileTypeCategory.Document | FileTypeCategory.Office,
+        AllowedExtensions = new[] { ".pdf", ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt" },
+        MaxFileSizeBytes = 50 * 1024 * 1024,
+        ExtensionMismatchPolicy = ExtensionMismatchPolicy.Reject,
+        UnknownFilePolicy = UnknownFilePolicy.Reject,
+        RequireStructureValidation = true,
+        AllowMultipleExtensions = false,
+        AllowFileWithoutExtension = false
+    };
+
     /// <summary>
     /// آپلود تصویر با بررسی امن
     /// </summary>
-    /// <param name="file">فایل آپلود شده (Image only)</param>
-    /// <returns>نتیجه اعتبارسنجی فایل</returns>
     [HttpPost("upload/image")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -53,7 +97,7 @@ public class FilesController : ControllerBase
             OriginalFileName = file.FileName,
             DeclaredMimeType = file.ContentType,
             DeclaredFileSize = file.Length,
-            Policy = new FileUploadPolicy()
+            Policy = ImagePolicy
         };
 
         var result = await _pipeline.ProcessAsync(request);
@@ -65,15 +109,12 @@ public class FilesController : ControllerBase
     }
 
     /// <summary>
-    /// آپلود فایل با تغییر پسوند
+    /// آپلود فایل با پالیسی مستند
     /// </summary>
-    /// <param name="file">فایل آپلود شده</param>
-    /// <param name="newExtension">پسوند جدید (اختیاری)</param>
-    /// <returns>نتیجه اعتبارسنجی بعد از تغییر extensión</returns>
-    [HttpPost("upload/rename-extension")]
+    [HttpPost("upload/document")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> UploadWithRenamedExtension(IFormFile file, [FromQuery] string? newExtension)
+    public async Task<IActionResult> UploadDocument(IFormFile file)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new FileValidationResult
@@ -82,27 +123,13 @@ public class FilesController : ControllerBase
                 Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "فایل انتخاب نشده است") }
             });
 
-        var originalExtension = Path.GetExtension(file.FileName);
-        var modifiedFileName = newExtension != null
-            ? $"{Path.GetFileNameWithoutExtension(file.FileName)}{newExtension}"
-            : file.FileName;
-
-        var stream = file.OpenReadStream();
-        var mimeType = file.ContentType;
-
-        // اگر پسوند تغییر کرد، mime type را نیز rekonstruye می‌کنیم
-        if (newExtension != null && !string.IsNullOrEmpty(originalExtension))
-        {
-            mimeType = MimeTypes.GetMimeType(newExtension);
-        }
-
         var request = new FileUploadRequest
         {
-            FileStream = stream,
-            OriginalFileName = modifiedFileName,
-            DeclaredMimeType = mimeType,
+            FileStream = file.OpenReadStream(),
+            OriginalFileName = file.FileName,
+            DeclaredMimeType = file.ContentType,
             DeclaredFileSize = file.Length,
-            Policy = new FileUploadPolicy()
+            Policy = DocumentPolicy
         };
 
         var result = await _pipeline.ProcessAsync(request);
@@ -113,94 +140,9 @@ public class FilesController : ControllerBase
         return Ok(result);
     }
 
-/// <summary>
-    /// بررسی mime type و پسوند فایل
-    /// </summary>
-    /// <param name="file">فایل آپلود شده</param>
-    /// <returns>اطلاعاتmtp و اعتبارسنجی</returns>
-    [HttpPost("upload/check-mime")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public IActionResult CheckMimeType(IFormFile file)
-    {
-        if (file == null || file.Length == 0)
-            return BadRequest(new FileValidationResult
-            {
-                IsValid = false,
-                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "فایل انتخاب نشده است") }
-            });
-
-        var originalExtension = Path.GetExtension(file.FileName);
-        var declaredMime = file.ContentType;
-        var hasMimeType = !string.IsNullOrEmpty(declaredMime);
-
-        return Ok(new
-        {
-            FileName = file.FileName,
-            OriginalExtension = originalExtension,
-            DeclaredMimeType = declaredMime,
-            HasDeclaredMimeType = hasMimeType,
-            MimeTypeStatus = hasMimeType ? "mime type موجود است" : "mime type مشخص نشده"
-        });
-    }
-
     /// <summary>
-    /// آپلود و بررسی تغییرات پسوند و mime (سی나리오 komple)
+    /// آپلود آرشیو با بررسی امنیتی
     /// </summary>
-    /// <param name="file">فایل آپلود شده</param>
-    /// <param name="newExtension">پسوند جدید برای تست</param>
-    /// <returns>نتیجه کامل بررسی</returns>
-    [HttpPost("upload/full-scenario")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> FullScenarioUpload(IFormFile file, [FromQuery] string newExtension)
-    {
-        if (file == null || file.Length == 0)
-            return BadRequest(new FileValidationResult
-            {
-                IsValid = false,
-                Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "فایل انتخاب نشده است") }
-            });
-
-        var originalFileName = file.FileName;
-        var originalExtension = Path.GetExtension(originalFileName);
-        var nameWithoutExt = Path.GetFileNameWithoutExtension(originalFileName);
-
-        // ساخت نام جدید با extensión تغییر یافته
-        var newFileName = $"{nameWithoutExt}{newExtension}";
-        var newMimeType = MimeTypes.GetMimeType(newExtension);
-
-        var stream = file.OpenReadStream();
-        var originalMime = file.ContentType;
-
-        var request = new FileUploadRequest
-        {
-            FileStream = stream,
-            OriginalFileName = newFileName,
-            DeclaredMimeType = newMimeType,
-            DeclaredFileSize = file.Length,
-            Policy = new FileUploadPolicy()
-        };
-
-        var result = await _pipeline.ProcessAsync(request);
-
-        return Ok(new
-        {
-            OriginalFileName = originalFileName,
-            OriginalExtension = originalExtension,
-            NewFileName = newFileName,
-            NewExtension = newExtension,
-            OriginalMimeType = originalMime,
-            NewMimeType = newMimeType,
-            PipelineResult = result
-        });
-    }
-
-    /// <summary>
-    /// آپلود آرشیو (zip/rar) با بررسی امنیتی
-    /// </summary>
-    /// <param name="file">آرشیو آپلود شده</param>
-    /// <returns>نتیجه اعتبارسنجی آرشیو</returns>
     [HttpPost("upload/archive")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -214,21 +156,20 @@ public class FilesController : ControllerBase
             });
 
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (extension != ".zip" && extension != ".rar")
+        if (!ArchivePolicy.AllowedExtensions.Contains(extension))
             return BadRequest(new FileValidationResult
             {
                 IsValid = false,
                 Errors = new[] { new FileValidationError(FileValidationErrorCode.ExtensionNotAllowed, "پسوند باید zip یا rar باشد") }
             });
 
-        var stream = file.OpenReadStream();
         var request = new FileUploadRequest
         {
-            FileStream = stream,
+            FileStream = file.OpenReadStream(),
             OriginalFileName = file.FileName,
             DeclaredMimeType = file.ContentType,
             DeclaredFileSize = file.Length,
-            Policy = new FileUploadPolicy()
+            Policy = ArchivePolicy
         };
 
         var result = await _pipeline.ProcessAsync(request);
@@ -242,8 +183,6 @@ public class FilesController : ControllerBase
     /// <summary>
     /// آپلود با حجم بیش از حد مجاز
     /// </summary>
-    /// <param name="file">فایل huge</param>
-    /// <returns>خطا اگر حجم بیش از حد باشد</returns>
     [HttpPost("upload/large")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -256,7 +195,7 @@ public class FilesController : ControllerBase
                 Errors = new[] { new FileValidationError(FileValidationErrorCode.FileEmpty, "فایل انتخاب نشده است") }
             });
 
-        const long maxSize = 1 * 1024 * 1024; // 1MB
+        const long maxSize = 1 * 1024 * 1024;
 
         if (file.Length > maxSize)
             return BadRequest(new FileValidationResult
@@ -265,14 +204,13 @@ public class FilesController : ControllerBase
                 Errors = new[] { new FileValidationError(FileValidationErrorCode.FileTooLarge, $"حجم فایل ({file.Length} بایت) بیش از حد مجاز ({maxSize} بایت) است") }
             });
 
-        var stream = file.OpenReadStream();
         var request = new FileUploadRequest
         {
-            FileStream = stream,
+            FileStream = file.OpenReadStream(),
             OriginalFileName = file.FileName,
             DeclaredMimeType = file.ContentType,
             DeclaredFileSize = file.Length,
-            Policy = new FileUploadPolicy()
+            Policy = DocumentPolicy
         };
 
         var result = await _pipeline.ProcessAsync(request);

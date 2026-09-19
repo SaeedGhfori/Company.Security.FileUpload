@@ -17,6 +17,7 @@ public sealed class FileNameValidator : IFileValidator
         var errors = new List<FileValidationError>();
         var warnings = new List<string>();
         var fileName = request.OriginalFileName ?? string.Empty;
+        var decodedFileName = ExtensionResolver.DecodeUrlEncoding(fileName);
 
         if (string.IsNullOrWhiteSpace(fileName))
         {
@@ -33,7 +34,8 @@ public sealed class FileNameValidator : IFileValidator
                 $"The file name exceeds the maximum length of {policy.MaxFileNameLength} characters."));
         }
 
-        if (ExtensionResolver.LooksLikePathTraversal(fileName))
+        if (ExtensionResolver.LooksLikePathTraversal(fileName)
+            || ExtensionResolver.LooksLikePathTraversal(decodedFileName))
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.FileNamePathTraversalDetected,
@@ -47,7 +49,7 @@ public sealed class FileNameValidator : IFileValidator
                 "The file name uses a reserved system name."));
         }
 
-        if (fileName.Contains('\0'))
+        if (fileName.Contains('\0') || decodedFileName.Contains('\0'))
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.FileNameContainsNullBytes,
@@ -61,7 +63,8 @@ public sealed class FileNameValidator : IFileValidator
                 "The file name contains invalid characters."));
         }
 
-        var hasExtension = ExtensionResolver.Normalize(fileName).Length > 0;
+        var hasExtension = ExtensionResolver.Normalize(fileName).Length > 0
+            || ExtensionResolver.Normalize(decodedFileName).Length > 0;
         if (!hasExtension && !policy.AllowFileWithoutExtension)
         {
             errors.Add(new FileValidationError(
@@ -70,6 +73,13 @@ public sealed class FileNameValidator : IFileValidator
         }
 
         if (ExtensionResolver.HasMultipleExtensions(fileName) && !policy.AllowMultipleExtensions)
+        {
+            errors.Add(new FileValidationError(
+                FileValidationErrorCode.ExtensionMultipleDetected,
+                "The file has multiple extensions which is not allowed by policy."));
+        }
+
+        if (ExtensionResolver.HasMultipleExtensions(decodedFileName) && !policy.AllowMultipleExtensions)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.ExtensionMultipleDetected,

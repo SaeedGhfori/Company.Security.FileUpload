@@ -166,7 +166,7 @@ public sealed class FileUploadPipeline
 
         try
         {
-            while (total <= limit)
+            while (total < limit)
             {
                 var read = await source.ReadAsync(new Memory<byte>(chunk, 0, (int)Math.Min(chunkSize, limit - total)), cancellationToken);
                 if (read == 0)

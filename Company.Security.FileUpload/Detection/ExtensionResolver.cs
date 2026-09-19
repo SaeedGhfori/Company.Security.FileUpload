@@ -1,4 +1,5 @@
 using System.Text;
+using System.Web;
 
 namespace Company.Security.FileUpload.Detection;
 
@@ -14,7 +15,8 @@ public static class ExtensionResolver
         if (string.IsNullOrWhiteSpace(fileName))
             return string.Empty;
 
-        var name = fileName.Trim();
+        var name = DecodeUrlEncoding(fileName);
+        name = name.Trim();
         var lastDot = name.LastIndexOf('.');
         if (lastDot < 0 || lastDot == name.Length - 1)
             return string.Empty;
@@ -26,6 +28,8 @@ public static class ExtensionResolver
     {
         if (string.IsNullOrWhiteSpace(extension))
             return false;
+
+        extension = DecodeUrlEncoding(extension);
 
         if (extension.Length > 32)
             return false;
@@ -44,7 +48,8 @@ public static class ExtensionResolver
         if (string.IsNullOrWhiteSpace(fileName))
             return Array.Empty<string>();
 
-        var name = fileName.Trim();
+        var name = DecodeUrlEncoding(fileName);
+        name = name.Trim();
         var parts = name.Split('.');
         if (parts.Length < 2)
             return Array.Empty<string>();
@@ -72,19 +77,28 @@ public static class ExtensionResolver
         if (string.IsNullOrWhiteSpace(fileName))
             return false;
 
-        if (fileName.Contains("..", StringComparison.Ordinal))
+        var decoded = DecodeUrlEncoding(fileName);
+
+        if (decoded.Contains("..", StringComparison.Ordinal))
             return true;
 
-        if (fileName.Contains("/", StringComparison.Ordinal) && !IsWindowsAbsolutePath(fileName))
+        if (decoded.Contains("/", StringComparison.Ordinal) && !IsWindowsAbsolutePath(decoded))
             return true;
 
-        if (fileName.IndexOf('\\') >= 0)
+        if (decoded.IndexOf('\\') >= 0)
             return true;
 
-        if (fileName.Contains(':', StringComparison.Ordinal))
+        if (decoded.Contains(':', StringComparison.Ordinal))
             return true;
 
-        if (fileName.Contains('\0'))
+        if (decoded.Contains('\0'))
+            return true;
+
+        if (decoded.Contains("%2e", StringComparison.OrdinalIgnoreCase)
+            || decoded.Contains("%2e%2e", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (decoded.Contains("%00", StringComparison.OrdinalIgnoreCase))
             return true;
 
         return false;
@@ -92,7 +106,7 @@ public static class ExtensionResolver
 
     public static bool IsReservedFileName(string fileName)
     {
-        var name = fileName.ToUpperInvariant();
+        var name = DecodeUrlEncoding(fileName).ToUpperInvariant();
         return name is "CON" or "PRN" or "AUX" or "NUL"
             || name.StartsWith("CON.", StringComparison.Ordinal)
             || name.StartsWith("PRN.", StringComparison.Ordinal)
@@ -100,6 +114,18 @@ public static class ExtensionResolver
             || name.StartsWith("NUL.", StringComparison.Ordinal)
             || name.StartsWith("COM", StringComparison.Ordinal)
             || name.StartsWith("LPT", StringComparison.Ordinal);
+    }
+
+    public static string DecodeUrlEncoding(string input)
+    {
+        try
+        {
+            return HttpUtility.UrlDecode(input);
+        }
+        catch
+        {
+            return input;
+        }
     }
 
     private static string NormalizeAlias(string extension)

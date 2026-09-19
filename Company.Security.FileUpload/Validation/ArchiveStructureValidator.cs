@@ -78,6 +78,14 @@ public sealed class ArchiveStructureValidator : IFileValidator
 
                 totalUncompressed += entry.Length;
                 totalCompressed += entry.CompressedLength;
+
+                if (policy.ArchiveMaxExtractedSize > 0 && totalUncompressed > policy.ArchiveMaxExtractedSize)
+                {
+                    errors.Add(new FileValidationError(
+                        FileValidationErrorCode.StructureZipBombDetected,
+                        $"The total uncompressed size ({totalUncompressed} bytes) exceeds the allowed limit of {policy.ArchiveMaxExtractedSize} bytes."));
+                    return FileValidationResult.Failure(errors);
+                }
             }
 
             if (errors.Count > 0)
