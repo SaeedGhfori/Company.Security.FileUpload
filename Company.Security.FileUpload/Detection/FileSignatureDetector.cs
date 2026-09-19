@@ -88,9 +88,10 @@ public sealed class FileSignatureDetector
         {
             if (stream.CanSeek)
                 stream.Position = position;
-            ArrayPool<byte>.Shared.Return(buffer);
         }
 
-        return total == maxBytes ? buffer : buffer.AsSpan(0, total).ToArray();
+        var result = buffer.AsSpan(0, total).ToArray();
+        ArrayPool<byte>.Shared.Return(buffer);
+        return result;
     }
 }
