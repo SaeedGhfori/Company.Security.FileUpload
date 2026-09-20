@@ -4,6 +4,16 @@
     <File Path=".editorconfig" />
     <File Path="Directory.Build.props" />
   </Folder>
+  <Folder Name="/SecurityReview/">
+    <File Path="SecurityReview/Architecture.md" />
+    <File Path="SecurityReview/Attack-Matrix.md" />
+    <File Path="SecurityReview/Code-Changes.md" />
+    <File Path="SecurityReview/Confirmed-Findings.md" />
+    <File Path="SecurityReview/Executive-Summary.md" />
+    <File Path="SecurityReview/Findings.md" />
+    <File Path="SecurityReview/Remediation-Plan.md" />
+    <File Path="SecurityReview/Test-Gaps.md" />
+  </Folder>
   <Project Path="BenchmarkApp/BenchmarkApp.csproj" />
   <Project Path="Company.Security.FileUpload.Tests/Company.Security.FileUpload.Tests.csproj" />
   <Project Path="Company.Security.FileUpload/Company.Security.FileUpload.csproj" />
