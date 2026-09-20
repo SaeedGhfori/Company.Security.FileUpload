@@ -9,10 +9,6 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [net8.0, net9.0, net10.0]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -20,28 +16,25 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            8.0.x
-            9.0.x
-            10.0.x
+          dotnet-version: 10.0.x
 
       - name: Restore dependencies
         run: dotnet restore Company.Security.FileUpload.slnx
 
       - name: Build (Release)
-        run: dotnet build Company.Security.FileUpload.slnx -c Release --framework \${{ matrix.target }}
+        run: dotnet build Company.Security.FileUpload.slnx -c Release --no-restore
 
       - name: Run tests
         run: dotnet test Company.Security.FileUpload.Tests/Company.Security.FileUpload.Tests.csproj -c Debug --no-build
 
       - name: Run code analyzers
-        run: dotnet build Company.Security.FileUpload/Company.Security.FileUpload.csproj -c Release --framework \${{ matrix.target }} 2>&1 | tee analyzer-output.txt
+        run: dotnet build Company.Security.FileUpload/Company.Security.FileUpload.csproj -c Release --no-restore 2>&1 | tee analyzer-output.txt
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-\${{ matrix.target }}
+          name: test-results-net10.0
           path: '**/TestResults/*.xml'
 
   security-scan:

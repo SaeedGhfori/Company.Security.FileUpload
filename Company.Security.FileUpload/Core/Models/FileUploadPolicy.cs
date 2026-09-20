@@ -8,11 +8,11 @@ public sealed record FileUploadPolicy
 
     public FileTypeCategory AllowedCategories { get; init; } = FileTypeCategory.All;
 
-    public IReadOnlyList<string> AllowedExtensions { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> AllowedExtensions { get; init; } = [];
 
-    public IReadOnlyList<string> AllowedMimeTypes { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> AllowedMimeTypes { get; init; } = [];
 
-    public IReadOnlyList<string> AllowListedFormats { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> AllowListedFormats { get; init; } = [];
 
     public long MaxFileSizeBytes { get; init; } = 10 * 1024 * 1024;
 

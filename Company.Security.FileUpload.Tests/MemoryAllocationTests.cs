@@ -112,8 +112,8 @@ public class MemoryAllocationTests
         Assert.Equal(8 * 1024, policy.SignatureReadLimitBytes);
         Assert.Equal(256 * 1024, policy.StructureReadLimitBytes);
         Assert.Equal(255, policy.MaxFileNameLength);
-        Assert.Equal(true, policy.RequireStructureValidation);
-        Assert.Equal(true, policy.RejectIfMalwareScanUnavailable);
+        Assert.True(policy.RequireStructureValidation);
+        Assert.True(policy.RejectIfMalwareScanUnavailable);
         Assert.Equal(UnknownFilePolicy.Reject, policy.UnknownFilePolicy);
         Assert.Equal(ExtensionMismatchPolicy.Reject, policy.ExtensionMismatchPolicy);
     }
