@@ -46,7 +46,57 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
         _validationSemaphore = new SemaphoreSlim(maxQueuedValidations + maxConcurrentValidations, maxQueuedValidations + maxConcurrentValidations);
     }
 
-    public async Task<FileValidationResult> ProcessAsync(FileUploadRequest request, CancellationToken cancellationToken = default)
+    public Task<FileValidationResult> ProcessAsync(FileUploadRequest request, CancellationToken cancellationToken = default)
+        => ProcessAsync(request, allowedExtensions: null, cancellationToken);
+
+    public async Task<FileValidationResult> ProcessAsync(
+        FileUploadRequest request,
+        IEnumerable<string>? allowedExtensions,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.FileStream);
+
+        var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
+
+        // Fold the per-call subset into a request-scoped policy copy. When a subset is supplied
+        // it becomes the effective allowlist; when it is absent/null the policy's own allowlist
+        // stands. The validators and PolicyEngine resolve "empty = all registered extensions for
+        // the detected category" against this effective list.
+        var effectivePolicy = ApplyAllowedExtensions(policy, allowedExtensions);
+
+        var requestScoped = new FileUploadRequest
+        {
+            FileStream = request.FileStream,
+            OriginalFileName = request.OriginalFileName,
+            DeclaredMimeType = request.DeclaredMimeType,
+            DeclaredFileSize = request.DeclaredFileSize,
+            Policy = effectivePolicy,
+            CancellationToken = request.CancellationToken
+        };
+
+        return await ProcessCoreAsync(requestScoped, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static FileUploadPolicy ApplyAllowedExtensions(FileUploadPolicy policy, IEnumerable<string>? allowedExtensions)
+    {
+        if (allowedExtensions is null)
+            return policy;
+
+        var normalized = new List<string>();
+        foreach (var raw in allowedExtensions)
+        {
+            var text = raw?.Trim();
+            if (string.IsNullOrEmpty(text))
+                continue;
+            var ext = text.StartsWith('.') ? text : "." + text;
+            normalized.Add(ext);
+        }
+
+        return policy with { AllowedExtensions = normalized };
+    }
+
+    private async Task<FileValidationResult> ProcessCoreAsync(FileUploadRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(request.FileStream);

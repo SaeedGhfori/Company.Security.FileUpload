@@ -27,6 +27,7 @@ Company.Security.FileUpload            ← ریشه: Builder + DI extension
 │                     ExtensionMismatchPolicy, MalwareScanErrorPolicy,
 │                     MalwareScanStatus, UnknownFilePolicy
 ├── Core/Exceptions/  FileUploadSecurityException, FileValidationException
+├── Core/Extensions/  FileExtensionRegistry.cs   (کاتالوگ داخلی پسوندها + رزولور)
 ├── Core/Interfaces/  IFileDetectionService, IFileUploadPipeline,
 │                     IFileUploadPipelineBuilder, IFileValidator, IMalwareScanner
 ├── Core/Models/      FileSignature, FileTypeInfo, FileUploadPolicy,
@@ -226,23 +227,24 @@ FileUploadPipeline(IFileDetectionService detectionService,
 - `_concurrencySemaphore = new SemaphoreSlim(maxConcurrentUploads)`
 - `_validationSemaphore = new SemaphoreSlim(maxQueued + maxConcurrent)`
 
-### ترتیب `ProcessAsync(request, ct)`
+### ترتیب `ProcessAsync(request, ct)` / `ProcessAsync(request, allowedExtensions, ct)`
 1. **بررسی:** request، `request.FileStream` غیر null؛ `request.Policy` لازم → در نبودش `InvalidOperationException("FileUploadRequest requires a Policy.")`.
-2. **Stopwatch** آغاز.
-3. **برنامه‌ریزی:** `WaitAsync(_concurrencySemaphore)` ← سپس `WaitAsync(_validationSemaphore)`.
-4. **موتور seek:** `(stream, shouldDispose) = EnsureSeekableAsync(request.FileStream, policy, ct)`:
+2. **تاشدن subset (فقط overload دوم):** `allowedExtensions` (عدس) → `policy with { AllowedExtensions = normalized }` (هرکدام با نقطه‌ی پیشوند). `null` → همان policy. سپس request-scoped جدید با همان فایل/فیلدها ساخته می‌شود.
+3. **Stopwatch** آغاز.
+4. **برنامه‌ریزی:** `WaitAsync(_concurrencySemaphore)` ← سپس `WaitAsync(_validationSemaphore)`.
+5. **موتور seek:** `(stream, shouldDispose) = EnsureSeekableAsync(request.FileStream, policy, ct)`:
    - قابل seek → `(source, false)`.
    - غیر seekable؛ اگر `sizeKnown && size <= MaxMemoryFileSizeBytes` → **دو شاخه یکسان** (هر دو) با buffer از `ArrayPool` + `MemoryStream`, `shouldDispose:true`. (در کد دو بلوک تکراری یکی برای «کوچک‌تر از threshold» و یکی «بزرگ‌تر از threshold» هست؛ رفتار یکسان — add در صورت لمس کد، ساده شود.)
    - در غیر این صورت (نامعلوم/بزرگ) → فایل موقت: `Path.GetTempFileName()` + `FileStream(..., FileOptions.DeleteOnClose)`، کپی تا limit `MaxFileSizeBytes + 1` بایت، `Position = 0`, `shouldDispose:true`. روی خطا: dispose + `File.Delete` و rethrow.
-5. **تشخیص:** `stream.Position = 0`؛ `DetectAsync(stream, declaredExtension: ExtensionResolver.Normalize(OriginalFileName), declaredMimeType, ct)`.
-6. **اعتبارسنجی:** پیمایش ترتیبی همه `_validators`، جمع کردن `Errors` هرکدام (هیچ‌کدام زنجیره را متوقف نمی‌کند).
-7. **اندازه:** `GetSize(stream)` = `Length` اگر seekable وگرنه `Position`.
-8. **پالیسی:** `PolicyEngine.Evaluate(detectedType, fileSize, policy, ct)` → جمع `Errors` + `Warnings`.
-9. ترکیب `FileValidationResult` نهایی؛ افزودن `Warnings` پالیسی.
-10. **بدافزار** فقط اگر `finalResult.IsValid && policy.RequireMalwareScan` → `RunMalwareScanAsync`.
-11. `ValidationDuration = stopwatch.Elapsed`؛ برگرداندن نتیجه.
-12. **finally:** `_validationSemaphore.Release()` همیشه؛ اگر `shouldDispose` → `stream.Dispose()` (خطای آن بلعیده می‌شود). سپس `_concurrencySemaphore.Release()`.
-13. **catch `OperationCanceledException`:** هر دو سمانفور با `try/catch {}` رها می‌شوند (مقاوم در برابر رهاسازیِ سمانفوری که هرگز گرفته نشده → از `SemaphoreFullException` جلوگیری می‌کند)؛ rethrow.
+6. **تشخیص:** `stream.Position = 0`؛ `DetectAsync(stream, declaredExtension: ExtensionResolver.Normalize(OriginalFileName), declaredMimeType, ct)`.
+7. **اعتبارسنجی:** پیمایش ترتیبی همه `_validators`، جمع کردن `Errors` هرکدام (هیچ‌کدام زنجیره را متوقف نمی‌کند).
+8. **اندازه:** `GetSize(stream)` = `Length` اگر seekable وگرنه `Position`.
+9. **پالیسی:** `PolicyEngine.Evaluate(detectedType, fileSize, policy, ct)` → جمع `Errors` + `Warnings`.
+10. ترکیب `FileValidationResult` نهایی؛ افزودن `Warnings` پالیسی.
+11. **بدافزار** فقط اگر `finalResult.IsValid && policy.RequireMalwareScan` → `RunMalwareScanAsync`.
+12. `ValidationDuration = stopwatch.Elapsed`؛ برگرداندن نتیجه.
+13. **finally:** `_validationSemaphore.Release()` همیشه؛ اگر `shouldDispose` → `stream.Dispose()` (خطای آن بلعیده می‌شود). سپس `_concurrencySemaphore.Release()`.
+14. **catch `OperationCanceledException`:** هر دو سمانفور با `try/catch {}` رها می‌شوند (مقاوم در برابر رهاسازیِ سمانفوری که هرگز گرفته نشده → از `SemaphoreFullException` جلوگیری می‌کند)؛ rethrow.
 
 ### ماشین حالت اسکن بدافزار `RunMalwareScanAsync`
 | وضعیت اسکنر | رفتار |
@@ -266,7 +268,9 @@ FileUploadPipeline(IFileDetectionService detectionService,
 3. **فرمت ناشناخته** (`!IsKnownFormat`): اگر `UnknownFilePolicy ∈ {Reject, Quarantine}` → `FileTypeUnknown`.
 4. **فرمت شناخته‌شده**:
    - `(policy.AllowedCategories & detectedType.Category) == 0` → `FileTypeNotAllowed`.
-   - `AllowedExtensions` غیرخالی و `!Contains(detectedType.DetectedExtension, OrdinalIgnoreCase)` → `ExtensionNotAllowed`.
+   - `effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.AllowedExtensions)` — وقتی `AllowedExtensions` خالی است این = «همه‌ی پسوندهای ثبت‌شده برای آن دسته»؛ وگرنه خودِ لیست.
+   - `!ContainsExtension(effectiveAllowed, detectedType.DetectedExtension)` → `ExtensionNotAllowed`.
+   - declared غیرخالی و `!ContainsExtension(effectiveAllowed, detected)Type.DeclaredExtension)` → `ExtensionNotAllowed`.
    - `AllowedMimeTypes` غیرخالی و `!Contains(detectedType.DetectedMimeType, OrdinalIgnoreCase)` → `MimeNotAllowed`.
    - `AllowListedFormats` غیرخالی و `!Contains(detectedType.FormatName, OrdinalIgnoreCase)` → `FileTypeNotAllowed`.
    - mismatch پسوند (`!IsEquivalentExtension(detected, declared)` و declared غیرخالی): According `ExtensionMismatchPolicy` → `Reject`→خطا `ExtensionMismatch`؛ `Warn`→warning؛ `Allow`/default→بی‌اثر.
@@ -338,6 +342,19 @@ FileUploadPipeline(IFileDetectionService detectionService,
 - `Resolve(signature?, customDetected?)` → MIME از signature یا از custom.
 - `IsSuspectMime(declared, detected)`: هردو مقادیر خالی→false؛ قیاس با مستثنی‌کردن `;params` و lowercase؛ برابر→false؛ `declared == "application/octet-stream"`→false؛ در غیر این صورت true (مشکوک/ناهماهنگ).
 
+### `FileExtensionRegistry` (static) — `Core/Extensions/FileExtensionRegistry.cs`
+کاتالوگ داخلی و جامعِ پسوندهای مجاز، بر اساس `FileTypeCategory`، ساخته‌شده از `FileSignatures.All` + پسوندهای متداولِ هر دسته (lcase بدون نقطه). این رجیستری همان «allowlist بزرگ» درون کتابخانه است که caller لازم نیست از بیرون بسازد.
+
+- `ExtensionsByCategory`: `IReadOnlyDictionary<FileTypeCategory, IReadOnlySet<string>>` — نگاشت دسته → مجموعه‌ی پسوند.
+- `All`: اتحادِ همه‌ی دسته‌ها.
+- `IsRegistered(extension)` / `IsCategoryRegistered(category, extension)` — عضو بودن (بدون نقطه، ci).
+- `AllForCategory(category)` — مجموعه‌ی دسته، یا `EmptySet` اگر دسته ثبت نشده.
+- `ResolveEffectiveAllowed(category, configured)` — **مهم:** لیستِ پیکربندیِ غیرخالی → خودِ لیست (normalized)؛ `null`/خالی → `AllForCategory(category)` (یعنی «همه‌ی پسوندهای آن دسته مجاز»).
+- `ContainsExtension(set, extension)` — عضو بودنِ normalized، با تطبیق alias (`IsEquivalentExtension`).
+
+دسته‌های بدون کلیه: Image, Video, Audio, Document, Office, Archive, Binary, Text, Svg.
+معنای «خالی ≠ باز بی‌قید»: در همه‌جا (validatorها + PolicyEngine) وقتی `AllowedExtensions` خالی باشد، گیت روی `AllForCategory(detectedType.Category)` می‌افتد، نه بی‌قید قبول.
+
 ---
 
 ## 9. اعتبارسنج‌ها (بخش `Validation`)
@@ -357,10 +374,10 @@ FileUploadPipeline(IFileDetectionService detectionService,
 - `nameOnly` = بخش قبل از آخرین نقطه؛ `SplitNameAndExtension`.
 
 ### `FileExtensionValidator`
-- `AllowedExtensions.Count == 0` → قبول بی‌قید.
+- `effectiveAllowed = ResolveEffectiveAllowed(detectedType.Category, policy.AllowedExtensions)` — لیست غیرخالی → همان، خالی → همه‌ی ثبت‌شده‌های دسته.
 - `declaredExtension = ExtensionResolver.Normalize(OriginalFileName)`.
 - خالی پسوند و `!AllowFileWithoutExtension` → `ExtensionMissing`.
-- نه در allowlist (تطبیق با `IsEquivalentExtension`) → `ExtensionNotAllowed`.
+- در `effectiveAllowed` نباشد (تطبیق alias-aware با `ContainsExtension`) → `ExtensionNotAllowed`.
 - `!IsValidExtension(declared)` → `ExtensionUnknown`.
 
 ### `FileSizeValidator`
@@ -373,8 +390,9 @@ FileUploadPipeline(IFileDetectionService detectionService,
 ### `FileSignatureValidator`
 - `!HasValidSignature` و `UnknownFilePolicy ∈ {Reject, Quarantine}` → `SignatureNotDetected`.
 - `IsKnownFormat`:
-  - `AllowedExtensions` غیرخالی و `!Contains(detected ext, OrdinalIgnoreCase)` → `SignatureNotAllowed`.
-  - declared پسوند غیرخالی و `!detectedType.ExtensionMatchesSignature` و `ExtensionMismatchPolicy==Reject` → `ExtensionMismatch`.
+  - `effectiveAllowed = ResolveEffectiveAllowed(detectedType.Category, policy.AllowedExtensions)`.
+  - اگر `detectedType.DetectedExtension` در `effectiveAllowed` نباشد → `SignatureNotAllowed`.
+  - declared غیرخالی: اگر در `effectiveAllowed` نباشد → `ExtensionNotAllowed`؛ اگر `!detectedType.ExtensionMatchesSignature` و `ExtensionMismatchPolicy==Reject` → `ExtensionMismatch`.
 
 ### `FileContentValidator`
 - MIME: اگر `DeclaredMimeType` غیرخالی و `IsKnownFormat`؛ `MimeDetector.IsSuspectMime`؛ مطابق `ExtensionMismatchPolicy`: `Reject`→خطا `MimeMismatchWithSignature`، وگرنه warning.

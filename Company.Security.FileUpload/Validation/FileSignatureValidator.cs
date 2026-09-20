@@ -1,4 +1,5 @@
 using Company.Security.FileUpload.Core.Enums;
+using Company.Security.FileUpload.Core.Extensions;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
 using Company.Security.FileUpload.Detection;
@@ -30,8 +31,12 @@ public sealed class FileSignatureValidator : IFileValidator
         }
         else if (detectedType.IsKnownFormat)
         {
-            if (policy.AllowedExtensions.Count > 0 &&
-                !policy.AllowedExtensions.Contains(detectedType.DetectedExtension, StringComparer.OrdinalIgnoreCase))
+            // Resolve the effective allowlist. When the configured list is non-empty, the detected
+            // signature's extension must be in it; when empty, every registered extension for the
+            // detected category is allowed.
+            var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.AllowedExtensions);
+
+            if (!FileExtensionRegistry.ContainsExtension(effectiveAllowed, detectedType.DetectedExtension))
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.SignatureNotAllowed,
@@ -39,15 +44,26 @@ public sealed class FileSignatureValidator : IFileValidator
             }
 
             var declaredExtension = ExtensionResolver.Normalize(request.OriginalFileName);
-            if (!string.IsNullOrEmpty(declaredExtension) && !detectedType.ExtensionMatchesSignature)
+            if (!string.IsNullOrEmpty(declaredExtension))
             {
-                switch (policy.ExtensionMismatchPolicy)
+                // The declared extension must also be within the (possibly per-call) allowlist.
+                if (!FileExtensionRegistry.ContainsExtension(effectiveAllowed, declaredExtension))
                 {
-                    case ExtensionMismatchPolicy.Reject:
-                        errors.Add(new FileValidationError(
-                            FileValidationErrorCode.ExtensionMismatch,
-                            $"The file extension '.{declaredExtension}' does not match the detected signature ({detectedType.FormatName})."));
-                        break;
+                    errors.Add(new FileValidationError(
+                        FileValidationErrorCode.ExtensionNotAllowed,
+                        $"The extension '.{declaredExtension}' is not allowed by policy."));
+                }
+
+                if (!detectedType.ExtensionMatchesSignature)
+                {
+                    switch (policy.ExtensionMismatchPolicy)
+                    {
+                        case ExtensionMismatchPolicy.Reject:
+                            errors.Add(new FileValidationError(
+                                FileValidationErrorCode.ExtensionMismatch,
+                                $"The file extension '.{declaredExtension}' does not match the detected signature ({detectedType.FormatName})."));
+                            break;
+                    }
                 }
             }
         }

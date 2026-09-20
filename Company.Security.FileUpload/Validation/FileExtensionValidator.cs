@@ -1,4 +1,5 @@
 using Company.Security.FileUpload.Core.Enums;
+using Company.Security.FileUpload.Core.Extensions;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
 using Company.Security.FileUpload.Detection;
@@ -17,10 +18,9 @@ public sealed class FileExtensionValidator : IFileValidator
         var errors = new List<FileValidationError>();
         var declaredExtension = ExtensionResolver.Normalize(request.OriginalFileName);
 
-        if (policy.AllowedExtensions.Count == 0)
-        {
-            return Task.FromResult(FileValidationResult.Success(detectedType, StreamHelper.GetLength(stream)));
-        }
+        // Resolve the effective allowlist: a non-empty configured list is used verbatim;
+        // an empty list means "every registered extension for the detected category".
+        var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.AllowedExtensions);
 
         if (string.IsNullOrEmpty(declaredExtension))
         {
@@ -31,11 +31,11 @@ public sealed class FileExtensionValidator : IFileValidator
                     "The file has no extension and the policy does not allow it."));
             }
         }
-        else if (!policy.AllowedExtensions.Any(a => ExtensionResolver.IsEquivalentExtension(a, declaredExtension)))
+        else if (!FileExtensionRegistry.ContainsExtension(effectiveAllowed, declaredExtension))
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.ExtensionNotAllowed,
-                $"The extension '{(declaredExtension.Length > 0 ? "." + declaredExtension : string.Empty)}' is not in the policy allowlist."));
+                $"The extension '{(declaredExtension.Length > 0 ? "." + declaredExtension : string.Empty)}' is not allowed."));
         }
 
         if (!ExtensionResolver.IsValidExtension(declaredExtension))

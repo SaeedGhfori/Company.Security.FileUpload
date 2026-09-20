@@ -1,4 +1,5 @@
 using Company.Security.FileUpload.Core.Enums;
+using Company.Security.FileUpload.Core.Extensions;
 using Company.Security.FileUpload.Core.Models;
 using Company.Security.FileUpload.Detection;
 
@@ -38,12 +39,21 @@ public static class PolicyEngine
                     $"File category '{detectedType.Category}' is not allowed by policy."));
             }
 
-            if (policy.AllowedExtensions.Count > 0 &&
-                !policy.AllowedExtensions.Contains(detectedType.DetectedExtension, StringComparer.OrdinalIgnoreCase))
+            var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.AllowedExtensions);
+
+            if (!FileExtensionRegistry.ContainsExtension(effectiveAllowed, detectedType.DetectedExtension))
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.ExtensionNotAllowed,
                     $"Detected extension '{detectedType.DetectedExtension}' is not allowed by policy."));
+            }
+
+            if (!string.IsNullOrEmpty(detectedType.DeclaredExtension) &&
+                !FileExtensionRegistry.ContainsExtension(effectiveAllowed, detectedType.DeclaredExtension))
+            {
+                errors.Add(new FileValidationError(
+                    FileValidationErrorCode.ExtensionNotAllowed,
+                    $"Declared extension '{Dotted(detectedType.DeclaredExtension)}' is not allowed by policy."));
             }
 
             if (policy.AllowedMimeTypes.Count > 0 &&

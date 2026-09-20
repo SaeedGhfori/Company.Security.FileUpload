@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Company.Security.FileUpload.Core.Enums;
+using Company.Security.FileUpload.Core.Extensions;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
 using Company.Security.FileUpload.Pipeline;
@@ -370,5 +371,126 @@ public class PipelineSecurityTests
 
         Assert.True(result.IsValid);
         Assert.Equal("PDF", result.DetectedFileType!.FormatName);
+    }
+}
+
+public class FileExtensionRegistryTests
+{
+    // Registry is comprehensive for every category
+    [Fact]
+    public void AllForCategory_NonEmpty_ForAllCategories()
+    {
+        var cats = new[]
+        {
+            FileTypeCategory.Image,
+            FileTypeCategory.Video,
+            FileTypeCategory.Audio,
+            FileTypeCategory.Document,
+            FileTypeCategory.Office,
+            FileTypeCategory.Archive,
+            FileTypeCategory.Binary,
+            FileTypeCategory.Text,
+            FileTypeCategory.Svg
+        };
+
+        foreach (var cat in cats)
+        {
+            var exts = FileExtensionRegistry.AllForCategory(cat);
+            Assert.NotEmpty(exts);
+        }
+    }
+
+    [Fact]
+    public void IsRegistered_RecognizesCommon()
+    {
+        Assert.True(FileExtensionRegistry.IsRegistered(".png"));
+        Assert.True(FileExtensionRegistry.IsRegistered("exe"));
+        Assert.False(FileExtensionRegistry.IsRegistered(".notarealext"));
+    }
+
+    [Fact]
+    public void ImageCategory_ContainsPngJpgWebp()
+    {
+        var exts = FileExtensionRegistry.AllForCategory(FileTypeCategory.Image);
+        Assert.Contains("png", exts);
+        Assert.Contains("jpg", exts);
+        Assert.Contains("webp", exts);
+    }
+}
+
+public class PerCallSubsetTests
+{
+    private static IFileUploadPipeline NewPipeline() => TestPolicy.BuildPipeline();
+
+    // Empty allowlist in policy + PNG → valid (all registered image extensions allowed)
+    [Fact]
+    public async Task EmptyPolicyAllowlist_Png_Accepted()
+    {
+        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
+        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: null);
+
+        Assert.True(result.IsValid);
+    }
+
+    // No subset sent → all registered extensions for the detected category allowed
+    [Fact]
+    public async Task NoSubset_Png_Accepted()
+    {
+        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
+        var result = await NewPipeline().ProcessAsync(request);
+
+        Assert.True(result.IsValid);
+    }
+
+    // Subset contains .png → PNG accepted
+    [Fact]
+    public async Task Subset_Png_Match_Accepted()
+    {
+        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
+        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: new[] { ".png" });
+
+        Assert.True(result.IsValid);
+    }
+
+    // Subset contains only .jpg → PNG rejected
+    [Fact]
+    public async Task Subset_JpgOnly_PngBytes_Rejected()
+    {
+        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
+        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: new[] { ".jpg" });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.ExtensionNotAllowed);
+    }
+
+    // Subset includes declared but not detected → rejected (declared vs detected mismatch)
+    [Fact]
+    public async Task Subset_Mismatch_DeclaredVsDetected_Rejected()
+    {
+        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        // PNG bytes, declared name says .jpg. The detected type is PNG. The subset jpg allows the
+        // declared name but not the real PNG type → the real content must also be in the subset → reject.
+        var request = TestFixtures.Request(TestFixtures.Png(), "photo.jpg", policy);
+        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: new[] { ".jpg" });
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.ExtensionMismatch
+            || e.Code == FileValidationErrorCode.ExtensionNotAllowed);
+    }
+
+    // Subset must hold for BOTH declared and detected extension. Here the declared name .png is
+    // in the subset but the real PNG bytes are detected and their .png is in the subset → valid.
+    [Fact]
+    public async Task Subset_DeclaredAndDetected_BothInSubset_Accepted()
+    {
+        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
+        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: new[] { ".png", ".jpg" });
+
+        Assert.True(result.IsValid);
     }
 }
