@@ -4,8 +4,6 @@
     <File Path="LICENSE" />
     <File Path=".editorconfig" />
     <File Path="Directory.Build.props" />
-    <File Path=".gitignore" />
-    <File Path=".gitattributes" />
   </Folder>
   <Project Path="BenchmarkApp/BenchmarkApp.csproj" />
   <Project Path="Company.Security.FileUpload.Tests/Company.Security.FileUpload.Tests.csproj" />
