@@ -102,7 +102,7 @@ public class PipelineSecurityTests
     [Fact]
     public async Task FileTooLarge_Rejected()
     {
-        var policy = TestPolicy.AllowExtensions(".png") with { MaxFileSizeBytes = 100 };
+        var policy = TestPolicy.AllowExtensions(".png") with { FileSizes = new FileSizes { MaxFileSizeBytes = 100 } };
         var request = TestFixtures.Request(TestFixtures.Png(400, 400), "big.png", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -210,7 +210,7 @@ public class PipelineSecurityTests
     [Fact]
     public async Task ZipTooManyEntries_Rejected()
     {
-        var policy = TestPolicy.AllowExtensions(".zip") with { ArchiveMaxEntries = 10 };
+        var policy = TestPolicy.AllowExtensions(".zip") with { Structures = new Structures { ArchiveMaxEntries = 10 } };
         var manyNames = Enumerable.Range(0, 50).Select(i => $"file{i}.txt").ToArray();
         var request = TestFixtures.Request(TestFixtures.ZipWithEntries(manyNames), "archive.zip", policy);
         var result = await NewPipeline().ProcessAsync(request);
@@ -235,7 +235,7 @@ public class PipelineSecurityTests
     [Fact]
     public async Task ZipNestedTooDeep_Rejected()
     {
-        var policy = TestPolicy.AllowExtensions(".zip") with { ArchiveMaxDepth = 5 };
+        var policy = TestPolicy.AllowExtensions(".zip") with { Structures = new Structures { ArchiveMaxDepth = 5 } };
         var request = TestFixtures.Request(TestFixtures.ZipNestedDepth(8), "archive.zip", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -247,7 +247,7 @@ public class PipelineSecurityTests
     [Fact]
     public async Task ImageTooLargeDimensions_Rejected()
     {
-        var policy = TestPolicy.AllowExtensions(".png") with { MaxImageWidth = 100, MaxImageHeight = 100 };
+        var policy = TestPolicy.AllowExtensions(".png") with { Structures = new Structures { MaxImageWidth = 100, MaxImageHeight = 100 } };
         var request = TestFixtures.Request(TestFixtures.Png(1500, 1500), "photo.png", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -259,7 +259,7 @@ public class PipelineSecurityTests
     [Fact]
     public async Task ImagePixelCountExceeded_Rejected()
     {
-        var policy = TestPolicy.AllowExtensions(".png") with { MaxPixelCount = 50_000 };
+        var policy = TestPolicy.AllowExtensions(".png") with { Structures = new Structures { MaxPixelCount = 50_000 } };
         var request = TestFixtures.Request(TestFixtures.Png(1000, 1000), "photo.png", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -271,7 +271,7 @@ public class PipelineSecurityTests
     [Fact]
     public async Task NestedZipLegit_Accepted()
     {
-        var policy = TestPolicy.AllowExtensions(".zip") with { ArchiveMaxDepth = 10 };
+        var policy = TestPolicy.AllowExtensions(".zip") with { Structures = new Structures { ArchiveMaxDepth = 10 } };
         var request = TestFixtures.Request(TestFixtures.ZipNestedDepth(2), "archive.zip", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -426,7 +426,7 @@ public class PerCallSubsetTests
     [Fact]
     public async Task EmptyPolicyAllowlist_Png_Accepted()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var policy = TestPolicy.Default with { FileKinds = TestPolicy.Default.FileKinds with { AllowedExtensions = [] } };
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -437,7 +437,7 @@ public class PerCallSubsetTests
     [Fact]
     public async Task NoSubset_Png_Accepted()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var policy = TestPolicy.Default with { FileKinds = TestPolicy.Default.FileKinds with { AllowedExtensions = [] } };
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -448,7 +448,7 @@ public class PerCallSubsetTests
     [Fact]
     public async Task Subset_Png_Match_Accepted()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [".png"] };
+        var policy = TestPolicy.Default with { FileKinds = TestPolicy.Default.FileKinds with { AllowedExtensions = [".png"] } };
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -459,7 +459,7 @@ public class PerCallSubsetTests
     [Fact]
     public async Task Subset_JpgOnly_PngBytes_Rejected()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [".jpg"] };
+        var policy = TestPolicy.Default with { FileKinds = TestPolicy.Default.FileKinds with { AllowedExtensions = [".jpg"] } };
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -471,7 +471,7 @@ public class PerCallSubsetTests
     [Fact]
     public async Task Subset_Mismatch_DeclaredVsDetected_Rejected()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [".jpg"] };
+        var policy = TestPolicy.Default with { FileKinds = TestPolicy.Default.FileKinds with { AllowedExtensions = [".jpg"] } };
         // PNG bytes, declared name says .jpg. The detected type is PNG. The subset jpg allows the
         // declared name but not the real PNG type → the real content must also be in the subset → reject.
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.jpg", policy);
@@ -487,7 +487,7 @@ public class PerCallSubsetTests
     [Fact]
     public async Task Subset_DeclaredAndDetected_BothInSubset_Accepted()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [".png", ".jpg"] };
+        var policy = TestPolicy.Default with { FileKinds = TestPolicy.Default.FileKinds with { AllowedExtensions = [".png", ".jpg"] } };
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
         var result = await NewPipeline().ProcessAsync(request);
 

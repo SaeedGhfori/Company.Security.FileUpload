@@ -107,7 +107,7 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
                     foreach (var warning in policyResult.Warnings)
                         finalResult = finalResult.AddWarning(warning);
 
-                    if (finalResult.IsValid && policy.RequireMalwareScan)
+                    if (finalResult.IsValid && policy.MalwareScanning.RequireMalwareScan)
                     {
                         var (scanBlocked, scanRecord) = await RunMalwareScanAsync(stream, policy, finalResult, cancellationToken);
                         if (scanBlocked is not null)
@@ -156,7 +156,7 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
     {
         if (_malwareScanner is null)
         {
-            if (policy.RejectIfMalwareScanUnavailable)
+            if (policy.MalwareScanning.RejectIfMalwareScanUnavailable)
             {
                 return (current.AddError(new FileValidationError(
                     FileValidationErrorCode.MalwareScanRequired,
@@ -174,7 +174,7 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
         switch (scanResult.Status)
         {
             case MalwareScanStatus.Clean:
-            case MalwareScanStatus.NotSupported when policy.MalwareScanUnknownPolicy == MalwareScanErrorPolicy.Allow:
+            case MalwareScanStatus.NotSupported when policy.MalwareScanning.MalwareScanUnknownPolicy == MalwareScanErrorPolicy.Allow:
                 return (null, scanResult);
 
             case MalwareScanStatus.Infected:
@@ -185,7 +185,7 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
                         : $"Malware scanning detected a threat: {scanResult.ThreatName}")), scanResult);
 
             case MalwareScanStatus.Error:
-                if (policy.MalwareScanErrorPolicy == MalwareScanErrorPolicy.Reject)
+                if (policy.MalwareScanning.MalwareScanErrorPolicy == MalwareScanErrorPolicy.Reject)
                 {
                     return (current.AddError(new FileValidationError(
                         FileValidationErrorCode.MalwareScanError,
@@ -195,7 +195,7 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
 
             case MalwareScanStatus.Unknown:
             case MalwareScanStatus.NotSupported:
-                if (policy.MalwareScanUnknownPolicy == MalwareScanErrorPolicy.Reject)
+                if (policy.MalwareScanning.MalwareScanUnknownPolicy == MalwareScanErrorPolicy.Reject)
                 {
                     return (current.AddError(new FileValidationError(
                         FileValidationErrorCode.MalwareScanError,
@@ -233,7 +233,7 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
         }
 
         // Small, known-size streams at or below the RAM threshold buffer in memory.
-        if (sizeKnown && fileSize <= policy.TempFileThresholdBytes)
+        if (sizeKnown && fileSize <= policy.FileSizes.TempFileThresholdBytes)
         {
             var buffer = new byte[fileSize];
             var read = 0L;
@@ -263,9 +263,9 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
 
         try
         {
-            var tempDir = string.IsNullOrWhiteSpace(policy.TempDirectory)
+            var tempDir = string.IsNullOrWhiteSpace(policy.FileSizes.TempDirectory)
                 ? Path.GetTempPath()
-                : policy.TempDirectory;
+                : policy.FileSizes.TempDirectory;
 
             if (!Directory.Exists(tempDir))
                 Directory.CreateDirectory(tempDir);
@@ -277,7 +277,7 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
             var buffer = ArrayPool<byte>.Shared.Rent(8192);
             var chunkSize = Math.Min(buffer.Length, 8192);
             var total = 0L;
-            var limit = policy.MaxFileSizeBytes + 1;
+            var limit = policy.FileSizes.MaxFileSizeBytes + 1;
 
             try
             {

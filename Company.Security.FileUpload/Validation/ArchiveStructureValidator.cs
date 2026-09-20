@@ -21,7 +21,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
         cancellationToken.ThrowIfCancellationRequested();
 
         var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
-        if (!policy.RequireStructureValidation || detectedType.Category != FileTypeCategory.Archive)
+        if (!policy.Structures.RequireStructureValidation || detectedType.Category != FileTypeCategory.Archive)
         {
             return Task.FromResult(FileValidationResult.Success(detectedType, StreamHelper.GetLength(stream)));
         }
@@ -58,7 +58,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
             stream.Position = 0;
             using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
 
-            if (archive.Entries.Count > policy.ArchiveMaxEntries)
+            if (archive.Entries.Count > policy.Structures.ArchiveMaxEntries)
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.StructureZipTooManyEntries,
@@ -84,7 +84,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
                 totalUncompressed += entry.Length;
                 totalCompressed += entry.CompressedLength;
 
-                if (policy.ArchiveMaxExtractedSize > 0 && totalUncompressed > policy.ArchiveMaxExtractedSize)
+                if (policy.Structures.ArchiveMaxExtractedSize > 0 && totalUncompressed > policy.Structures.ArchiveMaxExtractedSize)
                 {
                     errors.Add(new FileValidationError(
                         FileValidationErrorCode.StructureZipBombDetected,
@@ -96,7 +96,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
             if (errors.Count > 0)
                 return FileValidationResult.Failure(errors);
 
-            if (policy.ArchiveMaxExtractedSize > 0 && totalUncompressed > policy.ArchiveMaxExtractedSize)
+            if (policy.Structures.ArchiveMaxExtractedSize > 0 && totalUncompressed > policy.Structures.ArchiveMaxExtractedSize)
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.StructureZipBombDetected,
@@ -113,12 +113,12 @@ public sealed class ArchiveStructureValidator : IFileValidator
 
             if (errors.Count == 0)
             {
-                var depth = MeasureNestedDepth(archive, policy.ArchiveMaxDepth, cancellationToken);
-                if (depth > policy.ArchiveMaxDepth)
+                var depth = MeasureNestedDepth(archive, policy.Structures.ArchiveMaxDepth, cancellationToken);
+                if (depth > policy.Structures.ArchiveMaxDepth)
                 {
                     errors.Add(new FileValidationError(
                         FileValidationErrorCode.StructureZipDepthExceeded,
-                        $"The archive nesting depth of {depth} exceeds the allowed maximum of {policy.ArchiveMaxDepth}."));
+                        $"The archive nesting depth of {depth} exceeds the allowed maximum of {policy.Structures.ArchiveMaxDepth}."));
                 }
             }
 

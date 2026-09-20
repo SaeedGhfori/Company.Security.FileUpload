@@ -20,11 +20,11 @@ public sealed class FileExtensionValidator : IFileValidator
 
         // Resolve the effective allowlist: a non-empty configured list is used verbatim;
         // an empty list means "every registered extension for the detected category".
-        var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.AllowedExtensions);
+        var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.FileKinds.AllowedExtensions);
 
         if (string.IsNullOrEmpty(declaredExtension))
         {
-            if (!policy.AllowFileWithoutExtension)
+            if (!policy.FileNames.AllowFileWithoutExtension)
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.ExtensionMissing,

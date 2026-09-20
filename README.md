@@ -82,14 +82,20 @@ using Company.Security.FileUpload.Core.Models;
 var policy = new FileUploadPolicy
 {
     PolicyName = "AvatarUpload",
-    AllowedCategories = FileTypeCategory.Image,
-    AllowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" },
-    MaxFileSizeBytes = 5 * 1024 * 1024,
-    MaxImageWidth = 4000,
-    MaxImageHeight = 4000,
-    MaxPixelCount = 16_000_000,
-    ExtensionMismatchPolicy = ExtensionMismatchPolicy.Reject,
-    UnknownFilePolicy = UnknownFilePolicy.Reject
+    FileKinds = new FileKinds
+    {
+        AllowedCategories = FileTypeCategory.Image,
+        AllowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".webp" },
+        ExtensionMismatchPolicy = ExtensionMismatchPolicy.Reject,
+        UnknownFilePolicy = UnknownFilePolicy.Reject
+    },
+    FileSizes = new FileSizes { MaxFileSizeBytes = 5 * 1024 * 1024 },
+    Structures = new Structures
+    {
+        MaxImageWidth = 4000,
+        MaxImageHeight = 4000,
+        MaxPixelCount = 16_000_000
+    }
 };
 
 // ۲. پایپلاین
@@ -129,7 +135,7 @@ else
 
 `FileUploadPipeline.ProcessAsync(request)` یک جریان ثابت و متوالی اجرا می‌کند:
 
-1. **قابلیت seek** — اگر stream قابل seek نبود، تا `MaxFileSizeBytes + 1` در حافظه بافر می‌شود.
+1. **قابلیت seek** — اگر stream قابل seek نبود، تا `FileSizes.MaxFileSizeBytes + 1` بافر می‌شود.
 2. **تشخیص** — `IFileDetectionService.DetectAsync` یک پیشوند محدود خوانده و `FileTypeInfo`
    برمی‌گرداند (پسوند، MIME، دسته‌بندی، فرمت، نتیجه سیگنچر).
 3. **اعتبارسنج‌ها** — هر `IFileValidator` روی نوع تشخیص‌داده‌شده و درخواست اجرا می‌شود و
@@ -138,65 +144,74 @@ else
    پسوندها / MIME types / فرمت‌ها، عدم تطابق پسوند vs نوع واقعی، سیاست فایل ناشناخته،
    محدودیت‌های اندازه.
 5. **اسکن بدافزار (اختیاری)** — فقط وقتی اعتبارسنجی رد نشده و
-   `policy.RequireMalwareScan == true` باشد. نتیجه اسکن در `FileValidationResult.MalwareScanResult`
+   `policy.MalwareScanning.RequireMalwareScan == true` باشد. نتیجه اسکن در `FileValidationResult.MalwareScanResult`
    ثبت می‌شود.
 
 ---
 
 ## پیکربندی پالیسی
 
-همه تنظیمات در رکورد `FileUploadPolicy` هستند (غیرقابل تغییر؛ با `with` مشتقات بسازید).
+`FileUploadPolicy` یک رکورد (غیرقابل تغییر؛ با `with` مشتقات بسازید) با **۵ گروه named** است.
+هر گروه در `Company.Security.FileUpload.Core.Models` تعریف شده و با `with` روی خودِ گروه
+تغییر می‌کند:
 
-### لیست‌های مجاز / مسدود
+```csharp
+// تغییر یک زیرخاصیت: گروه را هم with کنید
+var p2 = policy with { FileSizes = policy.FileSizes with { MaxFileSizeBytes = 20 * 1024 * 1024 } };
+```
 
-| ویژگی | پیش‌فرض | هدف |
+### `FileKinds` — نوع / پسوند / MIME
+
+| زیرخاصیت | پیش‌فرض | هدف |
 |---|---|---|
 | `AllowedCategories` | `FileTypeCategory.All` | لیست مجاز دسته‌بندی‌ها (bit‑flag) |
 | `AllowedExtensions` | خالی → همه | لیست مجاز پسوندها (`".png"` یا `"png"`) |
 | `AllowedMimeTypes` | خالی → همه | لیست مجاز MIME types |
 | `AllowListedFormats` | خالی → همه | لیست مجاز نام فرمت‌ها (`"PNG"`) |
+| `UnknownFilePolicy` | `Reject` | فایل ناشناخته: `Reject`، `Quarantine`، یا `Allow` |
+| `ExtensionMismatchPolicy` | `Reject` | پسوند ≠ نوع واقعی: `Reject` یا `Warn` |
 
 > وقتی `AllowedCategories` و `AllowedExtensions` هر دو خالی باشند، پایپلاین هر فرمت
 > تشخیص‌داده‌شده‌ای را قبول می‌کند. برای تولید، حداقل یک لیست مجاز را پر کنید.
 
-### سیاست‌های رفتاری
+### `FileNames` — قواعد نام
 
-| ویژگی | پیش‌فرض | معنی |
+| زیرخاصیت | پیش‌فرض | معنی |
 |---|---|---|
-| `UnknownFilePolicy` | `Reject` | فایل ناشناخته: `Reject`، `Quarantine`، یا `Allow` |
-| `ExtensionMismatchPolicy` | `Reject` | پسوند ≠ نوع واقعی: `Reject` یا `Warn` |
 | `AllowFileWithoutExtension` | `false` | فایل بدون پسوند مجاز باشد |
 | `AllowMultipleExtensions` | `false` | فایل‌هایی مانند `file.tar.gz` مجاز باشند |
 | `MaxFileNameLength` | `255` | حداکثر طول نام فایل |
 
-### محدودیت‌های اندازه و منابع
+### `FileSizes` — اندازه و بافر موقت
 
-| ویژگی | پیش‌فرض | بررسی |
+| زیرخاصیت | پیش‌فرض | بررسی |
 |---|---|---|
 | `MaxFileSizeBytes` | 10 MB | حداکثر اندازه مطلق |
 | `MinFileSizeBytes` | 0 | حداقل اندازه |
+| `TempFileThresholdBytes` | 10 MB | سقف RAM برای بافر؛ بزرگ‌تر/نامعلوم → دیسک |
+| `TempDirectory` | null | پوشه‌ی فایل موقت سفارشی؛ null → `Path.GetTempPath()` |
+
+### `Structures` — اعتبارسنجی ساختار
+
+| زیرخاصیت | پیش‌فرض | معنی |
+|---|---|---|
+| `RequireStructureValidation` | `true` | کلید اصلی اعتبارسنجی ساختار |
+| `StructureReadLimitBytes` | 256 KB | پیش‌خواندن اعتبارسنجی ساختار |
 | `MaxImageWidth` / `Height` | 0 (خاموش) | محدودیت ابعاد تصویر |
 | `MaxPixelCount` | 0 (خاموش) | محدودیت تعداد پیکسل |
 | `ArchiveMaxEntries` | 1000 | حداکثر entry در آرشیو |
 | `ArchiveMaxDepth` | 5 | حداکثر عمق تو در تو |
 | `ArchiveMaxExtractedSize` | 0 (خاموش) | حداکثر اندازه استخراج‌شده |
-| `StructureReadLimitBytes` | 256 KB | پیش‌خواندن اعتبارسنجی ساختار |
+| `AllowMacroEnabledOfficeDocuments` | `false` | فایل‌های `.docm` با `vbaProject.bin` رد شوند |
 
-### اسکنر بدافزار
+### `MalwareScanning` — اسکنر بدافزار
 
-| ویژگی | پیش‌فرض | معنی |
+| زیرخاصیت | پیش‌فرض | معنی |
 |---|---|---|
 | `RequireMalwareScan` | `false` | اجرای اسکنر وقتی اعتبارسنجی رد نشده |
 | `RejectIfMalwareScanUnavailable` | `true` | اگر اسکنری نصب نباشد، رد شود |
 | `MalwareScanErrorPolicy` | `Reject` | خطای اسکنر → رد یا قبول |
 | `MalwareScanUnknownPolicy` | `Reject` | نتیجه نامعلوم اسکنر → رد یا قبول |
-
-### ماکروهای آفیس
-
-| ویژگی | پیش‌فرض | معنی |
-|---|---|---|
-| `AllowMacroEnabledOfficeDocuments` | `false` | فایل‌های `.docm` با `vbaProject.bin` رد شوند |
-| `RequireStructureValidation` | `true` | کلید اصلی اعتبارسنجی ساختار |
 
 ---
 
@@ -267,8 +282,8 @@ public interface IMalwareScanner
 
 نتیجه را از `MalwareScanResult.Clean(name)`، `.Infected(name, threat)`،
 `.Error(name)`، یا `.Unknown(name)` برگردانید. پایپلاین وضعیت‌ها را بر اساس
-`policy.MalwareScanErrorPolicy` / `MalwareScanUnknownPolicy` نگاشت می‌کند و وضعیت را در
-`FileValidationResult.MalwareScanResult` ثبت می‌کند.
+`MalwareScanning.MalwareScanErrorPolicy` / `MalwareScanning.MalwareScanUnknownPolicy` نگاشت
+می‌کند و وضعیت را در `FileValidationResult.MalwareScanResult` ثبت می‌کند.
 
 ---
 
@@ -281,7 +296,7 @@ public interface IMalwareScanner
 - **اعتبارسنجی:** `IFileValidator` را پیاده‌سازی کنید و از طریق `builder.AddValidator(...)`
   ثبت کنید (یا `WithDefaultValidators()` برای مجموعه استاندارد).
 - **اسکنر:** `IMalwareScanner` را برای هر موتور AV پیاده‌سازی کنید.
-- **پالیسی:** `FileUploadPolicy` یک رکورد است — با `with` ترکیب کنید.
+- **پالیسی:** `FileUploadPolicy` یک رکورد با گروه‌های named است — با `with` روی هر گروه ترکیب کنید.
 
 ---
 
@@ -320,8 +335,8 @@ ValidationDuration         // TimeSpan — مدت زمان بررسی
 
 ## عملکرد و محدودیت‌ها
 
-- اعتبارسنجی ساختار حداکثر `StructureReadLimitBytes` (پیش‌فرض **256 KB**) می‌خواند.
-- Streamهای غیر seekable تا `MaxFileSizeBytes + 1` بافر می‌شوند؛ رشد بیشتر به عنوان
+- اعتبارسنجی ساختار حداکثر `Structures.StructureReadLimitBytes` (پیش‌فرض **256 KB**) می‌خواند.
+- Streamهای غیر seekable تا `FileSizes.MaxFileSizeBytes + 1` بافر می‌شوند؛ رشد بیشتر به عنوان
   `FileTooLarge` تلقی می‌شود.
 - بازرسی آرشیو خواندن‌های uncompressed را محدود می‌کند و هدر ZIP را روی stream ای که به
   موقعیت اصلی بازگردانده می‌شود بررسی می‌کند.

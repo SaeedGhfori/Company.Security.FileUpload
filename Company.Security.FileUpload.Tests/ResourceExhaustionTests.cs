@@ -178,7 +178,7 @@ public class ResourceExhaustionTests
         var content = TestFixtures.Png(100, 100);
         File.WriteAllBytes(tempFile, content);
 
-        var policy = TestPolicy.AllowExtensions(".png") with { MaxFileSizeBytes = 1 }; // Very small limit
+        var policy = TestPolicy.AllowExtensions(".png") with { FileSizes = new FileSizes { MaxFileSizeBytes = 1 } }; // Very small limit
         var fileStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read);
         var nonSeekable = new NonSeekableStream(fileStream);
         var request = new FileUploadRequest
@@ -212,8 +212,11 @@ public class ResourceExhaustionTests
 
         var policy = TestPolicy.AllowExtensions(".png") with
         {
-            TempDirectory = tempDir,
-            TempFileThresholdBytes = 1 // force everything above RAM threshold to disk
+            FileSizes = new FileSizes
+            {
+                TempDirectory = tempDir,
+                TempFileThresholdBytes = 1 // force everything above RAM threshold to disk
+            }
         };
 
         var fileStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read);
@@ -673,7 +676,7 @@ public class ResourceExhaustionTests
         {
             FileStream = new MemoryStream(largePng),
             OriginalFileName = "big.png",
-            Policy = TestPolicy.AllowExtensions(".png") with { MaxFileSizeBytes = 100 }
+            Policy = TestPolicy.AllowExtensions(".png") with { FileSizes = new FileSizes { MaxFileSizeBytes = 100 } }
         };
         var result3 = await pipeline.ProcessAsync(request3);
         Assert.False(result3.IsValid);

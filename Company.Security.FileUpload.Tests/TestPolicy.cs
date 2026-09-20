@@ -10,29 +10,38 @@ internal static class TestPolicy
     public static FileUploadPolicy Default { get; } = new()
     {
         PolicyName = "TestDefault",
-        AllowedCategories = FileTypeCategory.All,
-        AllowedExtensions = new[]
+        FileKinds = new FileKinds
         {
-            ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".tiff",
-            ".pdf", ".txt", ".csv", ".xml", ".json",
-            ".zip", ".7z", ".gz", ".tar", ".rar",
-            ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt",
-            ".mp4", ".mov", ".avi", ".mkv", ".webm",
-            ".mp3", ".wav", ".ogg", ".flac",
-            ".exe"
+            AllowedCategories = FileTypeCategory.All,
+            AllowedExtensions = new[]
+            {
+                ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".tiff",
+                ".pdf", ".txt", ".csv", ".xml", ".json",
+                ".zip", ".7z", ".gz", ".tar", ".rar",
+                ".docx", ".xlsx", ".pptx", ".doc", ".xls", ".ppt",
+                ".mp4", ".mov", ".avi", ".mkv", ".webm",
+                ".mp3", ".wav", ".ogg", ".flac",
+                ".exe"
+            }
         },
-        MaxFileSizeBytes = 10 * 1024 * 1024,
-        RequireStructureValidation = true
+        FileSizes = new FileSizes { MaxFileSizeBytes = 10 * 1024 * 1024 },
+        Structures = new Structures { RequireStructureValidation = true }
     };
 
     public static FileUploadPolicy AllowExtensions(params string[] extensions)
     {
         return Default with
         {
-            AllowedExtensions = extensions.Select(e => e.StartsWith('.') ? e : "." + e).ToArray(),
-            AllowFileWithoutExtension = false,
-            AllowMultipleExtensions = false,
-            ExtensionMismatchPolicy = ExtensionMismatchPolicy.Reject
+            FileKinds = Default.FileKinds with
+            {
+                AllowedExtensions = extensions.Select(e => e.StartsWith('.') ? e : "." + e).ToArray(),
+                ExtensionMismatchPolicy = ExtensionMismatchPolicy.Reject
+            },
+            FileNames = new FileNames
+            {
+                AllowFileWithoutExtension = false,
+                AllowMultipleExtensions = false
+            }
         };
     }
 

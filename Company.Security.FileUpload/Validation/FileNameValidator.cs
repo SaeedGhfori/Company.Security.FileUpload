@@ -27,11 +27,11 @@ public sealed class FileNameValidator : IFileValidator
 
         var (nameOnly, _) = SplitNameAndExtension(fileName);
 
-        if (nameOnly.Length > policy.MaxFileNameLength)
+        if (nameOnly.Length > policy.FileNames.MaxFileNameLength)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.FileNameTooLong,
-                $"The file name exceeds the maximum length of {policy.MaxFileNameLength} characters."));
+                $"The file name exceeds the maximum length of {policy.FileNames.MaxFileNameLength} characters."));
         }
 
         if (ExtensionResolver.LooksLikePathTraversal(fileName)
@@ -65,21 +65,21 @@ public sealed class FileNameValidator : IFileValidator
 
         var hasExtension = ExtensionResolver.Normalize(fileName).Length > 0
             || ExtensionResolver.Normalize(decodedFileName).Length > 0;
-        if (!hasExtension && !policy.AllowFileWithoutExtension)
+        if (!hasExtension && !policy.FileNames.AllowFileWithoutExtension)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.ExtensionMissing,
                 "The file has no extension and the policy does not allow files without an extension."));
         }
 
-        if (ExtensionResolver.HasMultipleExtensions(fileName) && !policy.AllowMultipleExtensions)
+        if (ExtensionResolver.HasMultipleExtensions(fileName) && !policy.FileNames.AllowMultipleExtensions)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.ExtensionMultipleDetected,
                 "The file has multiple extensions which is not allowed by policy."));
         }
 
-        if (ExtensionResolver.HasMultipleExtensions(decodedFileName) && !policy.AllowMultipleExtensions)
+        if (ExtensionResolver.HasMultipleExtensions(decodedFileName) && !policy.FileNames.AllowMultipleExtensions)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.ExtensionMultipleDetected,

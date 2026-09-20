@@ -16,13 +16,13 @@ public sealed class FileSizeValidator : IFileValidator
         var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
         var errors = new List<FileValidationError>();
 
-        var (size, exact) = await MeasureLengthAsync(stream, policy.MaxFileSizeBytes + 1, cancellationToken);
+        var (size, exact) = await MeasureLengthAsync(stream, policy.FileSizes.MaxFileSizeBytes + 1, cancellationToken);
 
-        if (!exact && size == policy.MaxFileSizeBytes + 1)
+        if (!exact && size == policy.FileSizes.MaxFileSizeBytes + 1)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.FileTooLarge,
-                $"The file exceeds the maximum allowed size of {policy.MaxFileSizeBytes} bytes."));
+                $"The file exceeds the maximum allowed size of {policy.FileSizes.MaxFileSizeBytes} bytes."));
             return FileValidationResult.Failure(errors);
         }
 
@@ -32,18 +32,18 @@ public sealed class FileSizeValidator : IFileValidator
             return FileValidationResult.Failure(errors);
         }
 
-        if (size > policy.MaxFileSizeBytes)
+        if (size > policy.FileSizes.MaxFileSizeBytes)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.FileTooLarge,
-                $"The file size of {size} bytes exceeds the maximum of {policy.MaxFileSizeBytes} bytes."));
+                $"The file size of {size} bytes exceeds the maximum of {policy.FileSizes.MaxFileSizeBytes} bytes."));
         }
 
-        if (size < policy.MinFileSizeBytes)
+        if (size < policy.FileSizes.MinFileSizeBytes)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.FileTooSmall,
-                $"The file size of {size} bytes is below the minimum of {policy.MinFileSizeBytes} bytes."));
+                $"The file size of {size} bytes is below the minimum of {policy.FileSizes.MinFileSizeBytes} bytes."));
         }
 
         return errors.Count == 0

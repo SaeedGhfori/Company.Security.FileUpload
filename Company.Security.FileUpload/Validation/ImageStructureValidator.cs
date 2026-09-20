@@ -19,7 +19,7 @@ public sealed class ImageStructureValidator : IFileValidator
         cancellationToken.ThrowIfCancellationRequested();
 
         var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
-        if (!policy.RequireStructureValidation || detectedType.Category != FileTypeCategory.Image)
+        if (!policy.Structures.RequireStructureValidation || detectedType.Category != FileTypeCategory.Image)
         {
             return FileValidationResult.Success(detectedType, StreamHelper.GetLength(stream));
         }
@@ -29,7 +29,7 @@ public sealed class ImageStructureValidator : IFileValidator
             return FileValidationResult.Success(detectedType, StreamHelper.GetLength(stream));
         }
 
-        var readLimit = Math.Max(policy.StructureReadLimitBytes, 512);
+        var readLimit = Math.Max(policy.Structures.StructureReadLimitBytes, 512);
         var prefix = await StreamHelper.ReadPrefixAsync(stream, readLimit, cancellationToken);
         var errors = new List<FileValidationError>();
 
@@ -42,25 +42,25 @@ public sealed class ImageStructureValidator : IFileValidator
             return FileValidationResult.Failure(errors);
         }
 
-        if (policy.MaxImageWidth > 0 && dimensions.Width > policy.MaxImageWidth)
+        if (policy.Structures.MaxImageWidth > 0 && dimensions.Width > policy.Structures.MaxImageWidth)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.StructureImageDimensionExceeded,
-                $"The image width of {dimensions.Width} pixels exceeds the allowed maximum of {policy.MaxImageWidth}."));
+                $"The image width of {dimensions.Width} pixels exceeds the allowed maximum of {policy.Structures.MaxImageWidth}."));
         }
 
-        if (policy.MaxImageHeight > 0 && dimensions.Height > policy.MaxImageHeight)
+        if (policy.Structures.MaxImageHeight > 0 && dimensions.Height > policy.Structures.MaxImageHeight)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.StructureImageDimensionExceeded,
-                $"The image height of {dimensions.Height} pixels exceeds the allowed maximum of {policy.MaxImageHeight}."));
+                $"The image height of {dimensions.Height} pixels exceeds the allowed maximum of {policy.Structures.MaxImageHeight}."));
         }
 
-        if (policy.MaxPixelCount > 0 && dimensions.PixelCount > policy.MaxPixelCount)
+        if (policy.Structures.MaxPixelCount > 0 && dimensions.PixelCount > policy.Structures.MaxPixelCount)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.StructureImagePixelCountExceeded,
-                $"The image pixel count of {dimensions.PixelCount} exceeds the allowed maximum of {policy.MaxPixelCount}."));
+                $"The image pixel count of {dimensions.PixelCount} exceeds the allowed maximum of {policy.Structures.MaxPixelCount}."));
         }
 
         return errors.Count == 0

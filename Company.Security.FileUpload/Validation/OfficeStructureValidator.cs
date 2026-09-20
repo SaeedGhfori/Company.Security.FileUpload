@@ -22,7 +22,7 @@ public sealed class OfficeStructureValidator : IFileValidator
         cancellationToken.ThrowIfCancellationRequested();
 
         var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
-        if (!policy.RequireStructureValidation || detectedType.Category != FileTypeCategory.Office)
+        if (!policy.Structures.RequireStructureValidation || detectedType.Category != FileTypeCategory.Office)
         {
             return Task.FromResult(FileValidationResult.Success(detectedType, StreamHelper.GetLength(stream)));
         }
@@ -80,7 +80,7 @@ public sealed class OfficeStructureValidator : IFileValidator
                 }
             }
 
-            if (!policy.AllowMacroEnabledOfficeDocuments)
+            if (!policy.Structures.AllowMacroEnabledOfficeDocuments)
             {
                 var macroDetected = DetectMacros(archive);
                 if (macroDetected)

@@ -115,10 +115,16 @@ namespace Company.Security.FileUpload.BenchmarkApp
             // Configure policy to accept PNG files with 100MB max size
             var policy = new FileUploadPolicy
             {
-                MaxFileSizeBytes = 100 * 1024 * 1024, // 100 MB
-                MinFileSizeBytes = 1,
-                RequireStructureValidation = false,
-                TempFileThresholdBytes = 10 * 1024 * 1024
+                FileSizes = new FileSizes
+                {
+                    MaxFileSizeBytes = 100 * 1024 * 1024, // 100 MB
+                    MinFileSizeBytes = 1,
+                    TempFileThresholdBytes = 10 * 1024 * 1024
+                },
+                Structures = new Structures
+                {
+                    RequireStructureValidation = false
+                }
             };
 
             // Add PNG extension allowance

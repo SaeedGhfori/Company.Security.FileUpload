@@ -27,7 +27,7 @@ public class NonSeekableStreamTests
     [Fact]
     public async Task NonSeekableStream_TooLarge_Rejected()
     {
-        var policy = TestPolicy.AllowExtensions(".png") with { MaxFileSizeBytes = 100 };
+        var policy = TestPolicy.AllowExtensions(".png") with { FileSizes = new FileSizes { MaxFileSizeBytes = 100 } };
         var request = TestFixtures.RequestNonSeekable(TestFixtures.Png(400, 400), "big.png", policy);
         var result = await NewPipeline().ProcessAsync(request);
 
@@ -102,25 +102,25 @@ public class MemoryAllocationTests
     {
         var policy = new FileUploadPolicy();
 
-        Assert.Equal(10 * 1024 * 1024, policy.MaxFileSizeBytes);
-        Assert.Equal(0, policy.MinFileSizeBytes);
-        Assert.Equal(0, policy.ArchiveMaxExtractedSize);
-        Assert.Equal(10 * 1024 * 1024, policy.TempFileThresholdBytes);
-        Assert.Equal(1000, policy.ArchiveMaxEntries);
-        Assert.Equal(5, policy.ArchiveMaxDepth);
-        Assert.Equal(256 * 1024, policy.StructureReadLimitBytes);
-        Assert.Equal(255, policy.MaxFileNameLength);
-        Assert.True(policy.RequireStructureValidation);
-        Assert.True(policy.RejectIfMalwareScanUnavailable);
-        Assert.Equal(UnknownFilePolicy.Reject, policy.UnknownFilePolicy);
-        Assert.Equal(ExtensionMismatchPolicy.Reject, policy.ExtensionMismatchPolicy);
+        Assert.Equal(10 * 1024 * 1024, policy.FileSizes.MaxFileSizeBytes);
+        Assert.Equal(0, policy.FileSizes.MinFileSizeBytes);
+        Assert.Equal(0, policy.Structures.ArchiveMaxExtractedSize);
+        Assert.Equal(10 * 1024 * 1024, policy.FileSizes.TempFileThresholdBytes);
+        Assert.Equal(1000, policy.Structures.ArchiveMaxEntries);
+        Assert.Equal(5, policy.Structures.ArchiveMaxDepth);
+        Assert.Equal(256 * 1024, policy.Structures.StructureReadLimitBytes);
+        Assert.Equal(255, policy.FileNames.MaxFileNameLength);
+        Assert.True(policy.Structures.RequireStructureValidation);
+        Assert.True(policy.MalwareScanning.RejectIfMalwareScanUnavailable);
+        Assert.Equal(UnknownFilePolicy.Reject, policy.FileKinds.UnknownFilePolicy);
+        Assert.Equal(ExtensionMismatchPolicy.Reject, policy.FileKinds.ExtensionMismatchPolicy);
     }
 
     [Fact]
     public void FileUploadPolicy_TempFileThreshold_DefaultIs10MB()
     {
         var policy = new FileUploadPolicy();
-        Assert.Equal(10 * 1024 * 1024, policy.TempFileThresholdBytes);
+        Assert.Equal(10 * 1024 * 1024, policy.FileSizes.TempFileThresholdBytes);
     }
 }
 

@@ -22,7 +22,7 @@ public static class PolicyEngine
 
         if (!detectedType.IsKnownFormat)
         {
-            switch (policy.UnknownFilePolicy)
+            switch (policy.FileKinds.UnknownFilePolicy)
             {
                 case UnknownFilePolicy.Reject:
                 case UnknownFilePolicy.Quarantine:
@@ -32,14 +32,14 @@ public static class PolicyEngine
         }
         else
         {
-            if ((policy.AllowedCategories & detectedType.Category) == 0)
+            if ((policy.FileKinds.AllowedCategories & detectedType.Category) == 0)
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.FileTypeNotAllowed,
                     $"File category '{detectedType.Category}' is not allowed by policy."));
             }
 
-            var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.AllowedExtensions);
+            var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.FileKinds.AllowedExtensions);
 
             if (!FileExtensionRegistry.ContainsExtension(effectiveAllowed, detectedType.DetectedExtension))
             {
@@ -56,16 +56,16 @@ public static class PolicyEngine
                     $"Declared extension '{Dotted(detectedType.DeclaredExtension)}' is not allowed by policy."));
             }
 
-            if (policy.AllowedMimeTypes.Count > 0 &&
-                !policy.AllowedMimeTypes.Contains(detectedType.DetectedMimeType, StringComparer.OrdinalIgnoreCase))
+            if (policy.FileKinds.AllowedMimeTypes.Count > 0 &&
+                !policy.FileKinds.AllowedMimeTypes.Contains(detectedType.DetectedMimeType, StringComparer.OrdinalIgnoreCase))
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.MimeNotAllowed,
                     $"Detected MIME type '{detectedType.DetectedMimeType}' is not allowed by policy."));
             }
 
-            if (policy.AllowListedFormats.Count > 0 &&
-                !policy.AllowListedFormats.Contains(detectedType.FormatName, StringComparer.OrdinalIgnoreCase))
+            if (policy.FileKinds.AllowListedFormats.Count > 0 &&
+                !policy.FileKinds.AllowListedFormats.Contains(detectedType.FormatName, StringComparer.OrdinalIgnoreCase))
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.FileTypeNotAllowed,
@@ -75,7 +75,7 @@ public static class PolicyEngine
             if (!ExtensionResolver.IsEquivalentExtension(detectedType.DetectedExtension, detectedType.DeclaredExtension) &&
                 !string.IsNullOrEmpty(detectedType.DeclaredExtension))
             {
-                switch (policy.ExtensionMismatchPolicy)
+                switch (policy.FileKinds.ExtensionMismatchPolicy)
                 {
                     case ExtensionMismatchPolicy.Reject:
                         errors.Add(new FileValidationError(
@@ -89,18 +89,18 @@ public static class PolicyEngine
             }
         }
 
-        if (fileSizeBytes > policy.MaxFileSizeBytes)
+        if (fileSizeBytes > policy.FileSizes.MaxFileSizeBytes)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.FileTooLarge,
-                $"File size exceeds the allowed limit of {policy.MaxFileSizeBytes} bytes."));
+                $"File size exceeds the allowed limit of {policy.FileSizes.MaxFileSizeBytes} bytes."));
         }
 
-        if (fileSizeBytes < policy.MinFileSizeBytes)
+        if (fileSizeBytes < policy.FileSizes.MinFileSizeBytes)
         {
             errors.Add(new FileValidationError(
                 FileValidationErrorCode.FileTooSmall,
-                $"File size is below the minimum of {policy.MinFileSizeBytes} bytes."));
+                $"File size is below the minimum of {policy.FileSizes.MinFileSizeBytes} bytes."));
         }
 
         var result = errors.Count == 0

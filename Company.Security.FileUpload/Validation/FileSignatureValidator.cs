@@ -19,7 +19,7 @@ public sealed class FileSignatureValidator : IFileValidator
 
         if (!detectedType.HasValidSignature)
         {
-            switch (policy.UnknownFilePolicy)
+            switch (policy.FileKinds.UnknownFilePolicy)
             {
                 case UnknownFilePolicy.Reject:
                 case UnknownFilePolicy.Quarantine:
@@ -34,7 +34,7 @@ public sealed class FileSignatureValidator : IFileValidator
             // Resolve the effective allowlist. When the configured list is non-empty, the detected
             // signature's extension must be in it; when empty, every registered extension for the
             // detected category is allowed.
-            var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.AllowedExtensions);
+            var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.FileKinds.AllowedExtensions);
 
             if (!FileExtensionRegistry.ContainsExtension(effectiveAllowed, detectedType.DetectedExtension))
             {
@@ -56,7 +56,7 @@ public sealed class FileSignatureValidator : IFileValidator
 
                 if (!detectedType.ExtensionMatchesSignature)
                 {
-                    switch (policy.ExtensionMismatchPolicy)
+                    switch (policy.FileKinds.ExtensionMismatchPolicy)
                     {
                         case ExtensionMismatchPolicy.Reject:
                             errors.Add(new FileValidationError(

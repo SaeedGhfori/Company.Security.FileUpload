@@ -15,13 +15,13 @@ public sealed class PdfStructureValidator : IFileValidator
         cancellationToken.ThrowIfCancellationRequested();
 
         var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
-        if (!policy.RequireStructureValidation || !string.Equals(detectedType.FormatName, "PDF", StringComparison.OrdinalIgnoreCase))
+        if (!policy.Structures.RequireStructureValidation || !string.Equals(detectedType.FormatName, "PDF", StringComparison.OrdinalIgnoreCase))
         {
             return FileValidationResult.Success(detectedType, StreamHelper.GetLength(stream));
         }
 
         var errors = new List<FileValidationError>();
-        var prefix = await StreamHelper.ReadPrefixAsync(stream, Math.Max(policy.StructureReadLimitBytes, 256), cancellationToken);
+        var prefix = await StreamHelper.ReadPrefixAsync(stream, Math.Max(policy.Structures.StructureReadLimitBytes, 256), cancellationToken);
 
         if (prefix.Length < 5)
         {

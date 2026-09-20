@@ -24,7 +24,7 @@ public sealed class FileContentValidator : IFileValidator
             {
                 string message = "The declared MIME type does not match the detected content.";
 
-                if (policy.ExtensionMismatchPolicy == ExtensionMismatchPolicy.Reject)
+                if (policy.FileKinds.ExtensionMismatchPolicy == ExtensionMismatchPolicy.Reject)
                     errors.Add(new FileValidationError(FileValidationErrorCode.MimeMismatchWithSignature, message));
                 else
                     warnings.Add(message);
