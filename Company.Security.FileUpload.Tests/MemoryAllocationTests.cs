@@ -106,23 +106,14 @@ public class MemoryAllocationTests
         Assert.Equal(0, policy.MinFileSizeBytes);
         Assert.Equal(0, policy.ArchiveMaxExtractedSize);
         Assert.Equal(10 * 1024 * 1024, policy.TempFileThresholdBytes);
-        Assert.Equal(int.MaxValue, policy.MaxMemoryFileSizeBytes);
         Assert.Equal(1000, policy.ArchiveMaxEntries);
         Assert.Equal(5, policy.ArchiveMaxDepth);
-        Assert.Equal(8 * 1024, policy.SignatureReadLimitBytes);
         Assert.Equal(256 * 1024, policy.StructureReadLimitBytes);
         Assert.Equal(255, policy.MaxFileNameLength);
         Assert.True(policy.RequireStructureValidation);
         Assert.True(policy.RejectIfMalwareScanUnavailable);
         Assert.Equal(UnknownFilePolicy.Reject, policy.UnknownFilePolicy);
         Assert.Equal(ExtensionMismatchPolicy.Reject, policy.ExtensionMismatchPolicy);
-    }
-
-    [Fact]
-    public void FileUploadPolicy_MaxMemoryFileSizeBytes_IsIntMaxValueByDefault()
-    {
-        var policy = new FileUploadPolicy();
-        Assert.Equal(int.MaxValue, policy.MaxMemoryFileSizeBytes);
     }
 
     [Fact]

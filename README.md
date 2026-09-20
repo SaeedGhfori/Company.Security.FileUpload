@@ -180,7 +180,6 @@ else
 | `ArchiveMaxEntries` | 1000 | حداکثر entry در آرشیو |
 | `ArchiveMaxDepth` | 5 | حداکثر عمق تو در تو |
 | `ArchiveMaxExtractedSize` | 0 (خاموش) | حداکثر اندازه استخراج‌شده |
-| `SignatureReadLimitBytes` | 8 KB | پیش‌خواندن تشخیص |
 | `StructureReadLimitBytes` | 256 KB | پیش‌خواندن اعتبارسنجی ساختار |
 
 ### اسکنر بدافزار
@@ -321,7 +320,6 @@ ValidationDuration         // TimeSpan — مدت زمان بررسی
 
 ## عملکرد و محدودیت‌ها
 
-- تشخیص حداکثر `SignatureReadLimitBytes` (پیش‌فرض **8 KB**) می‌خواند.
 - اعتبارسنجی ساختار حداکثر `StructureReadLimitBytes` (پیش‌فرض **256 KB**) می‌خواند.
 - Streamهای غیر seekable تا `MaxFileSizeBytes + 1` بافر می‌شوند؛ رشد بیشتر به عنوان
   `FileTooLarge` تلقی می‌شود.

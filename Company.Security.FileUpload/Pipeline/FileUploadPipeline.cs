@@ -47,67 +47,29 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
     }
 
     public Task<FileValidationResult> ProcessAsync(FileUploadRequest request, CancellationToken cancellationToken = default)
-        => ProcessAsync(request, allowedExtensions: null, cancellationToken);
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(request.FileStream);
 
-    public async Task<FileValidationResult> ProcessAsync(
+        var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
+
+        var effectiveToken = cancellationToken.CanBeCanceled
+            ? cancellationToken
+            : request.CancellationToken;
+
+        return ProcessCoreAsync(request, policy, effectiveToken);
+    }
+
+    private async Task<FileValidationResult> ProcessCoreAsync(
         FileUploadRequest request,
-        IEnumerable<string>? allowedExtensions,
-        CancellationToken cancellationToken = default)
+        FileUploadPolicy policy,
+        CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(request.FileStream);
-
-        var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
-
-        // Fold the per-call subset into a request-scoped policy copy. When a subset is supplied
-        // it becomes the effective allowlist; when it is absent/null the policy's own allowlist
-        // stands. The validators and PolicyEngine resolve "empty = all registered extensions for
-        // the detected category" against this effective list.
-        var effectivePolicy = ApplyAllowedExtensions(policy, allowedExtensions);
-
-        var requestScoped = new FileUploadRequest
-        {
-            FileStream = request.FileStream,
-            OriginalFileName = request.OriginalFileName,
-            DeclaredMimeType = request.DeclaredMimeType,
-            DeclaredFileSize = request.DeclaredFileSize,
-            Policy = effectivePolicy,
-            CancellationToken = request.CancellationToken
-        };
-
-        return await ProcessCoreAsync(requestScoped, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static FileUploadPolicy ApplyAllowedExtensions(FileUploadPolicy policy, IEnumerable<string>? allowedExtensions)
-    {
-        if (allowedExtensions is null)
-            return policy;
-
-        var normalized = new List<string>();
-        foreach (var raw in allowedExtensions)
-        {
-            var text = raw?.Trim();
-            if (string.IsNullOrEmpty(text))
-                continue;
-            var ext = text.StartsWith('.') ? text : "." + text;
-            normalized.Add(ext);
-        }
-
-        return policy with { AllowedExtensions = normalized };
-    }
-
-    private async Task<FileValidationResult> ProcessCoreAsync(FileUploadRequest request, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        ArgumentNullException.ThrowIfNull(request.FileStream);
-
-        var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
         var stopwatch = Stopwatch.StartNew();
 
         await _concurrencySemaphore.WaitAsync(cancellationToken);
         try
         {
-            // Acquire validation slot - will block if at capacity
             await _validationSemaphore.WaitAsync(cancellationToken);
             try
             {
@@ -168,7 +130,6 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
                 }
                 finally
                 {
-                    // Always release validation slot
                     _validationSemaphore.Release();
 
                     if (shouldDispose)
@@ -185,7 +146,6 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
         }
         catch (OperationCanceledException)
         {
-            // Ensure slot is released on cancellation
             try { _validationSemaphore.Release(); } catch { }
             try { _concurrencySemaphore.Release(); } catch { }
             throw;
@@ -272,10 +232,8 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
             sizeKnown = true;
         }
 
-        // Small, known-size streams below the RAM threshold buffer in memory.
-        if (sizeKnown
-            && fileSize <= policy.TempFileThresholdBytes
-            && fileSize <= policy.MaxMemoryFileSizeBytes)
+        // Small, known-size streams at or below the RAM threshold buffer in memory.
+        if (sizeKnown && fileSize <= policy.TempFileThresholdBytes)
         {
             var buffer = new byte[fileSize];
             var read = 0L;

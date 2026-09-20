@@ -127,8 +127,7 @@ AllowedMimeTypes = []
 AllowListedFormats = []                            // مثل "PNG"
 MaxFileSizeBytes = 10 * 1024 * 1024
 MinFileSizeBytes = 0
-MaxMemoryFileSizeBytes = int.MaxValue              // سقف مطلق RAM برای بافر غیر seekable
-TempFileThresholdBytes = 10 * 1024 * 1024           // آستانه‌ی RAM: فایل‌های ≤ این مقدار در RAM؛ بزرگ‌تر → دیسک (توسط ما)
+TempFileThresholdBytes = 10 * 1024 * 1024           // سقف RAM برای بافر: فایل‌های ≤ این مقدار در RAM؛ بزرگ‌تر/نامعلوم → دیسک (توسط ما)
 TempDirectory = null                                // پوشه‌ی فایل موقت سفارشی؛ null → Path.GetTempPath()
 RequireStructureValidation = true                  // کلید اصلی ساختار
 RequireMalwareScan = false
@@ -147,9 +146,7 @@ RejectIfMalwareScanUnavailable = true
 MalwareScanErrorPolicy = Reject
 MalwareScanUnknownPolicy = Reject
 MaxFileNameLength = 255
-SignatureReadLimitBytes = 8 * 1024
 StructureReadLimitBytes = 256 * 1024
-MaxConcurrentUploads = 10
 ```
 
 ### `FileValidationResult` (record)
@@ -227,14 +224,14 @@ FileUploadPipeline(IFileDetectionService detectionService,
 - `_concurrencySemaphore = new SemaphoreSlim(maxConcurrentUploads)`
 - `_validationSemaphore = new SemaphoreSlim(maxQueued + maxConcurrent)`
 
-### ترتیب `ProcessAsync(request, ct)` / `ProcessAsync(request, allowedExtensions, ct)`
+### ترتیب `ProcessAsync(request, ct)`
 1. **بررسی:** request، `request.FileStream` غیر null؛ `request.Policy` لازم → در نبودش `InvalidOperationException("FileUploadRequest requires a Policy.")`.
-2. **تاشدن subset (فقط overload دوم):** `allowedExtensions` (عدس) → `policy with { AllowedExtensions = normalized }` (هرکدام با نقطه‌ی پیشوند). `null` → همان policy. سپس request-scoped جدید با همان فایل/فیلدها ساخته می‌شود.
+2. **توکن مؤثر:** اگر `ct.CanBeCanceled` → `ct`؛ وگرنه `request.CancellationToken`.
 3. **Stopwatch** آغاز.
 4. **برنامه‌ریزی:** `WaitAsync(_concurrencySemaphore)` ← سپس `WaitAsync(_validationSemaphore)`.
 5. **موتور seek:** `(stream, shouldDispose) = EnsureSeekableAsync(request.FileStream, policy, ct)`:
    - قابل seek → `(source, false)`.
-   - غیر seekable؛ اگر `sizeKnown && size <= MaxMemoryFileSizeBytes` → **دو شاخه یکسان** (هر دو) با buffer از `ArrayPool` + `MemoryStream`, `shouldDispose:true`. (در کد دو بلوک تکراری یکی برای «کوچک‌تر از threshold» و یکی «بزرگ‌تر از threshold» هست؛ رفتار یکسان — add در صورت لمس کد، ساده شود.)
+   - غیر seekable؛ اگر `sizeKnown && size <= TempFileThresholdBytes` → بافر در RAM (`MemoryStream` با بافر `ArrayPool`), `shouldDispose:true`.
    - در غیر این صورت (نامعلوم/بزرگ) → فایل موقت: `Path.GetTempFileName()` + `FileStream(..., FileOptions.DeleteOnClose)`، کپی تا limit `MaxFileSizeBytes + 1` بایت، `Position = 0`, `shouldDispose:true`. روی خطا: dispose + `File.Delete` و rethrow.
 6. **تشخیص:** `stream.Position = 0`؛ `DetectAsync(stream, declaredExtension: ExtensionResolver.Normalize(OriginalFileName), declaredMimeType, ct)`.
 7. **اعتبارسنجی:** پیمایش ترتیبی همه `_validators`، جمع کردن `Errors` هرکدام (هیچ‌کدام زنجیره را متوقف نمی‌کند).
@@ -469,7 +466,7 @@ FileUploadPipeline(IFileDetectionService detectionService,
 
 1. **`ExtensionMismatchPolicy.Allow`** و **`UnknownFilePolicy.Quarantine`**: در عمل شاخه‌ی خاصی ندارند — `Allow` روی mismatch «بی‌اثر» (نه خطا نه هشدار)، و `Quarantine` همان‌طورِ `Reject` است.
 2. **`PolicyEngine`** برای `AllowedExtensions`/`AllowedMimeTypes` از `string.Contains` ساده استفاده می‌کند (نه alias‑aware)، در حالی‌که `FileExtensionValidator` با `IsEquivalentExtension` مقایسه می‌کند → عدم تطابق بالقوه بین این دو گیت.
-3. **بافر stream غیر seekable** (در `FileUploadPipeline`): حالا ۳ مسیر — قابل seek → همان؛ `sizeKnown && size ≤ TempFileThresholdBytes && ≤ MaxMemoryFileSizeBytes` → RAM (`MemoryStream`); در غیر این صورت (بزرگ/نامعلوم) → دیسک با `ManagedTempFileStream` (فایل در `policy.TempDirectory ?? Path.GetTempPath()`، پاکسازی‌شده توسط ما در dispose؛ نه `FileOptions.DeleteOnClose`). اندازه‌ی نامعلوم از `Length` فقط در `CanSeek` خوانده می‌شود — از خواندن `Position` اجتناب می‌شود (چون برخی wrapper های غیر seekable روی `Position` `NotSupportedException` پرتاب می‌کنند).
+3. **بافر stream غیر seekable** (در `FileUploadPipeline`): حالا ۳ مسیر — قابل seek → همان؛ `sizeKnown && size ≤ TempFileThresholdBytes` → RAM (`MemoryStream`); در غیر این صورت (بزرگ/نامعلوم) → دیسک با `ManagedTempFileStream` (فایل در `policy.TempDirectory ?? Path.GetTempPath()`، پاکسازی‌شده توسط ما در dispose؛ نه `FileOptions.DeleteOnClose`). اندازه‌ی نامعلوم از `Length` فقط در `CanSeek` خوانده می‌شود — از خواندن `Position` اجتناب می‌شود (چون برخی wrapper های غیر seekable روی `Position` `NotSupportedException` پرتاب می‌کنند).
 
    > رفتار قبلی: `Position` از منبع خوانده می‌شد → روی stream های غیر seekableِ بدون `Position` پرتاب می‌کرد. حالا چنین stream هایی مستقیماً به دیسک می‌روند (RAM نمی‌گیرند).
 4. **همه‌ی validators** هنگام‌که با `Policy == null` داده شوند `InvalidOperationException` پرتاب می‌کنند؛ بنابراین پالیسی در هر مسیر pipeline الزامی است.

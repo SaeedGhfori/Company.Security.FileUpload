@@ -428,7 +428,7 @@ public class PerCallSubsetTests
     {
         var policy = TestPolicy.Default with { AllowedExtensions = [] };
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
-        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: null);
+        var result = await NewPipeline().ProcessAsync(request);
 
         Assert.True(result.IsValid);
     }
@@ -448,9 +448,9 @@ public class PerCallSubsetTests
     [Fact]
     public async Task Subset_Png_Match_Accepted()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var policy = TestPolicy.Default with { AllowedExtensions = [".png"] };
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
-        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: new[] { ".png" });
+        var result = await NewPipeline().ProcessAsync(request);
 
         Assert.True(result.IsValid);
     }
@@ -459,9 +459,9 @@ public class PerCallSubsetTests
     [Fact]
     public async Task Subset_JpgOnly_PngBytes_Rejected()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var policy = TestPolicy.Default with { AllowedExtensions = [".jpg"] };
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
-        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: new[] { ".jpg" });
+        var result = await NewPipeline().ProcessAsync(request);
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.ExtensionNotAllowed);
@@ -471,11 +471,11 @@ public class PerCallSubsetTests
     [Fact]
     public async Task Subset_Mismatch_DeclaredVsDetected_Rejected()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var policy = TestPolicy.Default with { AllowedExtensions = [".jpg"] };
         // PNG bytes, declared name says .jpg. The detected type is PNG. The subset jpg allows the
         // declared name but not the real PNG type → the real content must also be in the subset → reject.
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.jpg", policy);
-        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: new[] { ".jpg" });
+        var result = await NewPipeline().ProcessAsync(request);
 
         Assert.False(result.IsValid);
         Assert.Contains(result.Errors, e => e.Code == FileValidationErrorCode.ExtensionMismatch
@@ -487,9 +487,9 @@ public class PerCallSubsetTests
     [Fact]
     public async Task Subset_DeclaredAndDetected_BothInSubset_Accepted()
     {
-        var policy = TestPolicy.Default with { AllowedExtensions = [] };
+        var policy = TestPolicy.Default with { AllowedExtensions = [".png", ".jpg"] };
         var request = TestFixtures.Request(TestFixtures.Png(), "photo.png", policy);
-        var result = await NewPipeline().ProcessAsync(request, allowedExtensions: new[] { ".png", ".jpg" });
+        var result = await NewPipeline().ProcessAsync(request);
 
         Assert.True(result.IsValid);
     }

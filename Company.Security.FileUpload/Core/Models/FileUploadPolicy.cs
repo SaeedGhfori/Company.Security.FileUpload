@@ -18,8 +18,6 @@ public sealed record FileUploadPolicy
 
     public long MinFileSizeBytes { get; init; }
 
-    public long MaxMemoryFileSizeBytes { get; init; } = int.MaxValue;
-
     public int TempFileThresholdBytes { get; init; } = 10 * 1024 * 1024;
 
     public string? TempDirectory { get; init; }
@@ -60,9 +58,5 @@ public sealed record FileUploadPolicy
 
     public int MaxFileNameLength { get; init; } = 255;
 
-    public int SignatureReadLimitBytes { get; init; } = 8 * 1024;
-
     public int StructureReadLimitBytes { get; init; } = 256 * 1024;
-
-    public int MaxConcurrentUploads { get; init; } = 10;
 }
