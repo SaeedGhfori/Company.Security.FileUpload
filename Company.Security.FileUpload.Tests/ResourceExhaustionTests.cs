@@ -198,6 +198,45 @@ public class ResourceExhaustionTests
         try { File.Delete(tempFile); } catch { }
     }
 
+    // 6b. Temp file is created in the policy-specified directory and cleaned up after
+    [Fact]
+    public async Task TempDirectory_IsUsed_AndCleanedAfterProcessing()
+    {
+        // Arrange - a directory we own, to verify the pipeline uses it and cleans it.
+        var tempDir = Path.Combine(Path.GetTempPath(), "FileUploadTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        var tempFile = Path.GetTempFileName();
+        var content = TestFixtures.Png(100, 100);
+        File.WriteAllBytes(tempFile, content);
+
+        var policy = TestPolicy.AllowExtensions(".png") with
+        {
+            TempDirectory = tempDir,
+            TempFileThresholdBytes = 1 // force everything above RAM threshold to disk
+        };
+
+        var fileStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read);
+        var nonSeekable = new NonSeekableStream(fileStream);
+        var request = new FileUploadRequest
+        {
+            FileStream = nonSeekable,
+            OriginalFileName = "photo.png",
+            Policy = policy
+        };
+
+        // Act
+        var result = await NewPipeline().ProcessAsync(request);
+
+        // Assert
+        Assert.True(result.IsValid);
+        Assert.Empty(Directory.EnumerateFiles(tempDir)); // temp file cleaned up
+
+        // Cleanup
+        try { File.Delete(tempFile); } catch { }
+        try { Directory.Delete(tempDir); } catch { }
+    }
+
     // 7. IOException during temp-file write does not cause success
     [Fact]
     public async Task IOException_TempWrite_DoesNotCauseSuccess()

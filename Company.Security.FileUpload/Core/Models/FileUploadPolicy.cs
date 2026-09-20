@@ -22,6 +22,8 @@ public sealed record FileUploadPolicy
 
     public int TempFileThresholdBytes { get; init; } = 10 * 1024 * 1024;
 
+    public string? TempDirectory { get; init; }
+
     public bool RequireStructureValidation { get; init; } = true;
 
     public bool RequireMalwareScan { get; init; }

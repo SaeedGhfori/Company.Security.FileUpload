@@ -214,61 +214,58 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
         long fileSize = 0;
         bool sizeKnown = false;
 
-        // Determine file size if possible
+        // Determine file size if possible (Length may throw NotSupportedException on
+        // non-seekable wrappers, so only read it when CanSeek is true).
         if (source.CanSeek && source.Length >= 0)
         {
             fileSize = source.Length;
             sizeKnown = true;
         }
-        else if (source.Position >= 0)
+
+        // Small, known-size streams below the RAM threshold buffer in memory.
+        if (sizeKnown
+            && fileSize <= policy.TempFileThresholdBytes
+            && fileSize <= policy.MaxMemoryFileSizeBytes)
         {
-            fileSize = source.Position;
-            sizeKnown = true;
+            var buffer = new byte[fileSize];
+            var read = 0L;
+            while (read < fileSize)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var count = await source.ReadAsync(buffer.AsMemory((int)read, (int)(fileSize - read)), cancellationToken);
+                if (count == 0)
+                    break;
+                read += count;
+            }
+
+            var memoryStream = new MemoryStream(buffer, writable: false);
+            memoryStream.Position = 0;
+            return (memoryStream, true);
         }
 
-        // If size is known and within memory limit, use MemoryStream to avoid temp file
-        if (sizeKnown && fileSize <= policy.MaxMemoryFileSizeBytes)
-        {
-            // If file is smaller than temp file threshold, keep in memory
-            if (fileSize <= policy.TempFileThresholdBytes)
-            {
-                var buffer = ArrayPool<byte>.Shared.Rent((int)fileSize);
-                try
-                {
-                    await source.ReadAsync(buffer, 0, (int)fileSize, cancellationToken);
-                    var memoryStream = new MemoryStream(buffer);
-                    return (memoryStream, true);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(buffer);
-                }
-            }
+        // Larger or unknown-size streams buffer to a temp file we own, so they never
+        // live in RAM and the temp file is deleted by us on dispose (not left to the OS).
+        return await BufferToTempFileAsync(source, policy, cancellationToken);
+    }
 
-            // File is larger than threshold but within memory limit - still use MemoryStream
-            // since policy allows keeping it in memory
-            var buffer2 = ArrayPool<byte>.Shared.Rent((int)fileSize);
-            try
-            {
-                await source.ReadAsync(buffer2, 0, (int)fileSize, cancellationToken);
-                var memoryStream = new MemoryStream(buffer2);
-                return (memoryStream, true);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(buffer2);
-            }
-        }
-
-        // For larger files or unknown size, use temp file (existing behavior)
+    private static async Task<(Stream Stream, bool ShouldDispose)> BufferToTempFileAsync(Stream source, FileUploadPolicy policy, CancellationToken cancellationToken)
+    {
         string? tempFilePath = null;
         FileStream? tempStream = null;
 
         try
         {
-            tempFilePath = Path.GetTempFileName();
-            tempStream = new FileStream(tempFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite,
-                FileShare.None, 4096, FileOptions.DeleteOnClose);
+            var tempDir = string.IsNullOrWhiteSpace(policy.TempDirectory)
+                ? Path.GetTempPath()
+                : policy.TempDirectory;
+
+            if (!Directory.Exists(tempDir))
+                Directory.CreateDirectory(tempDir);
+
+            tempFilePath = Path.Combine(tempDir, $"{Guid.NewGuid():N}.tmp");
+            tempStream = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.ReadWrite,
+                FileShare.None, 4096);
+
             var buffer = ArrayPool<byte>.Shared.Rent(8192);
             var chunkSize = Math.Min(buffer.Length, 8192);
             var total = 0L;
@@ -292,13 +289,12 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
             }
 
             tempStream.Position = 0;
-            return (tempStream, true);
+            return (new ManagedTempFileStream(tempStream, tempFilePath), true);
         }
         catch
         {
-            // Clean up on failure - delete temp file if created
             try { tempStream?.Dispose(); } catch { }
-            try { File.Delete(tempFilePath ?? ""); } catch { }
+            try { if (tempFilePath is not null) File.Delete(tempFilePath); } catch { }
             throw;
         }
     }
