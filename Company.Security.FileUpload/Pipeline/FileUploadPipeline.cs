@@ -211,6 +211,56 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
         if (source.CanSeek)
             return (source, false);
 
+        long fileSize = 0;
+        bool sizeKnown = false;
+
+        // Determine file size if possible
+        if (source.CanSeek && source.Length >= 0)
+        {
+            fileSize = source.Length;
+            sizeKnown = true;
+        }
+        else if (source.Position >= 0)
+        {
+            fileSize = source.Position;
+            sizeKnown = true;
+        }
+
+        // If size is known and within memory limit, use MemoryStream to avoid temp file
+        if (sizeKnown && fileSize <= policy.MaxMemoryFileSizeBytes)
+        {
+            // If file is smaller than temp file threshold, keep in memory
+            if (fileSize <= policy.TempFileThresholdBytes)
+            {
+                var buffer = ArrayPool<byte>.Shared.Rent((int)fileSize);
+                try
+                {
+                    await source.ReadAsync(buffer, 0, (int)fileSize, cancellationToken);
+                    var memoryStream = new MemoryStream(buffer);
+                    return (memoryStream, true);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+            }
+
+            // File is larger than threshold but within memory limit - still use MemoryStream
+            // since policy allows keeping it in memory
+            var buffer2 = ArrayPool<byte>.Shared.Rent((int)fileSize);
+            try
+            {
+                await source.ReadAsync(buffer2, 0, (int)fileSize, cancellationToken);
+                var memoryStream = new MemoryStream(buffer2);
+                return (memoryStream, true);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer2);
+            }
+        }
+
+        // For larger files or unknown size, use temp file (existing behavior)
         string? tempFilePath = null;
         FileStream? tempStream = null;
 
