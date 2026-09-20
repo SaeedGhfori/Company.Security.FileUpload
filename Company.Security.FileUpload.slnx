@@ -1,5 +1,4 @@
 <Solution>
   <Project Path="BenchmarkApp/BenchmarkApp.csproj" />
   <Project Path="Company.Security.FileUpload/Company.Security.FileUpload.csproj" />
-  <Project Path="FileUploadApi/FileUploadApi.csproj" />
 </Solution>
