@@ -1,4 +1,14 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="README.md" />
+    <File Path="LICENSE" />
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path=".gitignore" />
+    <File Path=".gitattributes" />
+  </Folder>
   <Project Path="BenchmarkApp/BenchmarkApp.csproj" />
+  <Project Path="Company.Security.FileUpload.Tests/Company.Security.FileUpload.Tests.csproj" />
   <Project Path="Company.Security.FileUpload/Company.Security.FileUpload.csproj" />
+  <Project Path="SecurityVerifier/SecurityVerifier.csproj" />
 </Solution>
