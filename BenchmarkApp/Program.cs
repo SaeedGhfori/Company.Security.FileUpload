@@ -40,7 +40,7 @@ namespace Company.Security.FileUpload.BenchmarkApp
 
     internal static class Program
     {
-// Create a valid minimal PNG (1x1 pixel) - same format as TestFixtures.Png()
+        // Create a valid minimal PNG (1x1 pixel) - same format as TestFixtures.Png()
         private static byte[] CreateValidPng()
         {
             var pngStream = new MemoryStream();
@@ -104,103 +104,119 @@ namespace Company.Security.FileUpload.BenchmarkApp
         public static async Task Main(string[] args)
         {
             Console.WriteLine("=== File Upload Resource Benchmark ===\n");
-            Console.WriteLine("Configuring pipeline with resource limits...\n");
-
-            // Build pipeline with default validators and detection
-            var pipeline = new FileUploadPipelineBuilder()
-                .UseDefaultDetection()
-                .WithDefaultValidators()
-                .Build();
-
-            // Configure policy to accept PNG files with 100MB max size
-            var policy = new FileUploadPolicy
-            {
-                FileSizes = new FileSizes
-                {
-                    MaxFileSizeBytes = 100 * 1024 * 1024, // 100 MB
-                    MinFileSizeBytes = 1,
-                    TempFileThresholdBytes = 10 * 1024 * 1024
-                },
-                Structures = new Structures
-                {
-                    RequireStructureValidation = false
-                }
-            };
-
-            // Add PNG extension allowance
-            // Since we can't modify TestPolicy.AllowExtensions internally,
-            // we set the policy to allow PNG and the detection should recognize it
 
             const int totalUploads = 1000;
-            const int fileSizeBytes = 100 * 1024 * 1024; // 100 MB
-            const int chunkSize = 8192;
+            const long fileSizeBytes = 100 * 1024 * 1024; // 100 MB
+            const int maxConcurrentUploads = 10;          // the resource budget
+
+            // Safety: this run writes up to 100 GB to the temp disk. Do a quick
+            // free-space + max-temperature check and refuse to burn 100 GB if the
+            // host can't hold at least the projected peak (C x MaxFileSize).
+            var tempDir = Path.Combine(Path.GetTempPath(), "FileUploadBench_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+
+            var drive = new DriveInfo(Path.GetPathRoot(tempDir)!);
+            var peakDiskBytes = (long)maxConcurrentUploads * fileSizeBytes; // 1 GB
+            var safetyHeadroom = 2L * 1024 * 1024 * 1024;                    // keep 2 GB spare
+            if (drive.AvailableFreeSpace < peakDiskBytes + safetyHeadroom)
+            {
+                Console.WriteLine($"ABORT: temp drive '{drive.Name}' has only {drive.AvailableFreeSpace / (1024.0 * 1024 * 1024):F1} GB free;");
+                Console.WriteLine($"       projected peak temp usage is ~{peakDiskBytes / (1024.0 * 1024 * 1024):F1} GB. Refusing to burn 100 GB.");
+                return;
+            }
 
             Console.WriteLine("Settings:");
             Console.WriteLine($"  Total uploads:              {totalUploads}");
             Console.WriteLine($"  Target file size:           {fileSizeBytes / (1024.0 * 1024.0):F2} MB");
-            Console.WriteLine($"  Stream type:                Non-seekable");
-            Console.WriteLine($"  MaxConcurrentValidations:   32");
-            Console.WriteLine($"  MaxQueuedValidations:       32\n");
+            Console.WriteLine($"  Stream type:                Non-seekable (all buffered to temp disk)");
+            Console.WriteLine($"  MaxConcurrentUploads:        {maxConcurrentUploads} (resource budget)");
+            Console.WriteLine($"  MaxFileSizeBytes:           {fileSizeBytes / (1024.0 * 1024.0):F2} MB");
+            Console.WriteLine($"  Temp dir:                   {tempDir}");
+            Console.WriteLine($"  Peak temp disk usage:       {peakDiskBytes / (1024.0 * 1024 * 1024):F1} GB (C x MaxFileSize)");
+            Console.WriteLine();
 
-            // Create temp file with valid PNG content
-            var tempFile = Path.GetTempFileName();
-            byte[] pngData = CreateValidPng();
-            File.WriteAllBytes(tempFile, pngData);
-            Console.WriteLine($"Temp file created: {tempFile} ({pngData.Length} bytes, valid PNG)");
+            // Build pipeline with default validators and detection, applying the
+            // concurrency budget that caps simultaneous temp-file buffering.
+            var pipeline = new FileUploadPipelineBuilder()
+                .UseDefaultDetection()
+                .WithDefaultValidators()
+                .SetMaxConcurrentUploads(maxConcurrentUploads)
+                .Build();
 
-            // Create file stream + non-seekable wrapper
-            var fileStream = new FileStream(tempFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-            var nonSeekableStream = new NonSeekableStream(fileStream);
-
-            // Build request - reset position for each upload
-            var request = new FileUploadRequest
+            var policy = new FileUploadPolicy
             {
-                FileStream = nonSeekableStream,
-                OriginalFileName = "photo.png",
-                DeclaredMimeType = "image/png",
-                Policy = policy,
-                CancellationToken = CancellationToken.None
+                FileKinds = new FileKinds
+                {
+                    AllowedExtensions = new[] { ".png" },
+                    AllowedCategories = FileTypeCategory.Image,
+                    ExtensionMismatchPolicy = ExtensionMismatchPolicy.Reject
+                },
+                FileSizes = new FileSizes
+                {
+                    MaxFileSizeBytes = fileSizeBytes,
+                    MinFileSizeBytes = 1,
+                    TempFileThresholdBytes = 1 // force non-seekable -> disk buffer
+                },
+                Structures = new Structures
+                {
+                    RequireStructureValidation = true
+                }
             };
 
-            Console.WriteLine("Starting benchmark - processing 1000 uploads with 32 concurrent limit...\n");
+            var pngData = CreateValidPng();
+
+            Console.WriteLine("Starting benchmark - every upload is buffered to the temp disk...\n");
+
+            // Track observed concurrency of underlying temp-file buffering and
+            // the peak number of temp files present at once.
+            var peakConcurrent = 0;
+            var concurrent = 0;
+            var peakTempFiles = 0;
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-            // Process with concurrency semaphore - 32 at a time
-            var concurrencySemaphore = new System.Threading.SemaphoreSlim(32, 32);
-            var tasks = new List<Task<FileValidationResult>>();
+            // Warm-process memory baseline AFTER JIT.
+            var memBefore = GC.GetTotalMemory(true);
 
-            for (int i = 0; i < totalUploads; i++)
+            var tasks = new List<Task<FileValidationResult>>(totalUploads);
+
+            for (var i = 0; i < totalUploads; i++)
             {
-                // Reset stream position for each upload
-                fileStream.Position = 0;
+                var inner = new NonSeekableStream(new BufferedPngSource(pngData, fileSizeBytes, () => Interlocked.Increment(ref concurrent), () =>
+                {
+                    var c = Interlocked.Decrement(ref concurrent);
+                    UpdateMax(ref peakConcurrent, c);
+                }));
 
-                await concurrencySemaphore.WaitAsync();
+                var request = new FileUploadRequest
+                {
+                    FileStream = inner,
+                    OriginalFileName = "photo.png",
+                    DeclaredMimeType = "image/png",
+                    Policy = policy,
+                    CancellationToken = CancellationToken.None
+                };
 
                 tasks.Add(Task.Run(async () =>
                 {
                     try
                     {
-                        var result = await pipeline.ProcessAsync(request);
-                        return result;
+                        return await pipeline.ProcessAsync(request);
                     }
                     finally
                     {
-                        concurrencySemaphore.Release();
+                        UpdateMax(ref peakTempFiles, Directory.EnumerateFiles(tempDir).Count());
                     }
                 }));
-
-                // Throttle to avoid creating all tasks at once
-                if (tasks.Count % 32 == 0 && tasks.Count > 0)
-                {
-                    await Task.WhenAny(tasks); // Complete some before starting more
-                }
             }
 
-            // Wait for all remaining
+            // Wait for all tasks (the pipeline itself bounds concurrency to
+            // maxConcurrentUploads; no outer semaphore needed).
             await Task.WhenAll(tasks);
 
             stopwatch.Stop();
+
+            var memAfter = GC.GetTotalMemory(true);
 
             // Collect results
             var results = tasks.Select(t => t.Result).ToList();
@@ -220,27 +236,23 @@ namespace Company.Security.FileUpload.BenchmarkApp
             Console.WriteLine($"Failed (exception/error):    {failed}");
             Console.WriteLine();
 
-            Console.WriteLine($"MaxConcurrentValidations:   32");
+            Console.WriteLine($"Peak concurrent temp-buffer: {peakConcurrent} (budget={maxConcurrentUploads})");
+            Console.WriteLine($"Peak temp files on disk:     {peakTempFiles} (max theoretical={maxConcurrentUploads})");
             Console.WriteLine();
 
-            // Peak active validations - with 32-slot semaphore
-            Console.WriteLine($"Peak active validations:    32 (enforced by semaphore)");
-            Console.WriteLine();
-
-            // Process memory measurement
-            var memBefore = GC.GetTotalMemory(true);
-            var memAfter = GC.GetTotalMemory(true);
-            var peakRamBytes = Math.Max(Math.Abs(memAfter - memBefore), 1);
+            // Peak process memory (heap) delta
+            var peakRamBytes = Math.Max(memAfter - memBefore, 1);
             var peakRamMB = peakRamBytes / (1024.0 * 1024.0);
-            Console.WriteLine($"Peak process memory:        {peakRamMB:F2} MB (GC.GetTotalMemory snapshot)");
+            Console.WriteLine($"Heap Delta (after - before): {peakRamMB:F2} MB");
+            Console.WriteLine($"  WorkingSet (proc):         {Environment.WorkingSet / (1024.0 * 1024):F2} MB");
             Console.WriteLine();
 
             // Disk write throughput
             var totalBytesWritten = (long)totalUploads * fileSizeBytes;
             var elapsedSeconds = stopwatch.Elapsed.TotalSeconds;
             var throughputMBps = totalBytesWritten / (1024.0 * 1024.0) / elapsedSeconds;
-            Console.WriteLine($"Disk throughput:            {throughputMBps:F2} MB/s");
-            Console.WriteLine($"                           ({totalBytesWritten / (1024.0 * 1024.0 * 1024.0):F2} GB / {elapsedSeconds:F1}s)");
+            Console.WriteLine($"Disk write throughput:      {throughputMBps:F2} MB/s");
+            Console.WriteLine($"                           ({totalBytesWritten / (1024.0 * 1024.0 * 1024.0):F2} GB written / {elapsedSeconds:F1}s)");
             Console.WriteLine();
 
             // Validation timing - P95/P99 only for completed validations
@@ -268,17 +280,90 @@ namespace Company.Security.FileUpload.BenchmarkApp
             }
 
             Console.WriteLine();
+            Console.WriteLine($"Total temp bytes written:   {totalBytesWritten / (1024.0 * 1024.0 * 1024.0):F2} GB");
+            Console.WriteLine();
 
-            // Total temp bytes written (approximate)
-            var totalTempBytes = (long)totalUploads * fileSizeBytes;
-            Console.WriteLine($"Total temp bytes written:   {totalTempBytes / (1024.0 * 1024.0 * 1024.0):F2} GB (approximate)");
+            var leftover = Directory.EnumerateFiles(tempDir).Count();
+            Console.WriteLine($"Temp files left on disk:    {leftover} (DeleteOnClose + disposal)");
 
-            // Cleanup
             Console.WriteLine();
             Console.WriteLine("Cleaning up...");
-            try { File.Delete(tempFile); } catch { }
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
 
             Console.WriteLine("\nBenchmark complete.");
+        }
+
+        private static void UpdateMax(ref int target, int value)
+        {
+            int current;
+            do
+            {
+                current = Volatile.Read(ref target);
+                if (current >= value)
+                    return;
+            }
+            while (Interlocked.CompareExchange(ref target, value, current) != current);
+        }
+
+        /// <summary>Produces a valid PNG header followed by zero padding up to the configured total size.</summary>
+        private sealed class BufferedPngSource : Stream
+        {
+            private readonly byte[] _header;
+            private readonly long _totalSizeBytes;
+            private readonly Action _onEnter;
+            private readonly Action _onExit;
+            private long _position;
+
+            public BufferedPngSource(byte[] header, long totalSizeBytes, Action onEnter, Action onExit)
+            {
+                _header = header;
+                _totalSizeBytes = totalSizeBytes;
+                _onEnter = onEnter;
+                _onExit = onExit;
+            }
+
+            public override bool CanRead => true;
+            public override bool CanSeek => false;
+            public override bool CanWrite => false;
+            public override long Position
+            {
+                get => _position;
+                set => throw new NotSupportedException();
+            }
+            public override long Length => _totalSizeBytes;
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                var remaining = (int)Math.Min(count, _totalSizeBytes - _position);
+                if (remaining <= 0)
+                    return 0;
+
+                _onEnter();
+                try
+                {
+                    var headerCopy = Math.Min(remaining, (int)Math.Max(0, _header.Length - _position));
+                    if (headerCopy > 0)
+                        _header.AsSpan((int)_position, headerCopy).CopyTo(buffer.AsSpan(offset, headerCopy));
+                    offset += headerCopy;
+
+                    var pad = remaining - headerCopy;
+                    if (pad > 0)
+                        buffer.AsSpan(offset, pad).Clear();
+
+                    _position += remaining;
+                    return remaining;
+                }
+                finally
+                {
+                    _onExit();
+                }
+            }
+
+            public override void Flush() { }
+            public override int ReadByte() => throw new NotSupportedException();
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+            public override void SetLength(long value) => throw new NotSupportedException();
+            public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         }
     }
 }

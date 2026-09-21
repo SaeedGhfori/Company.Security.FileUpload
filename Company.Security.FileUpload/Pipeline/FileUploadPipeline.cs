@@ -243,7 +243,7 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
 
             tempFilePath = Path.Combine(tempDir, $"{Guid.NewGuid():N}.tmp");
             tempStream = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.ReadWrite,
-                FileShare.None, 4096);
+                FileShare.None, 4096, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
 
             var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
             var chunkSize = Math.Min(buffer.Length, 64 * 1024);
