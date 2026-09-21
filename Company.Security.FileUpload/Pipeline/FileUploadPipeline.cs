@@ -245,8 +245,8 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
             tempStream = new FileStream(tempFilePath, FileMode.CreateNew, FileAccess.ReadWrite,
                 FileShare.None, 4096);
 
-            var buffer = ArrayPool<byte>.Shared.Rent(8192);
-            var chunkSize = Math.Min(buffer.Length, 8192);
+            var buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
+            var chunkSize = Math.Min(buffer.Length, 64 * 1024);
             var total = 0L;
             var limit = policy.FileSizes.MaxFileSizeBytes + 1;
 

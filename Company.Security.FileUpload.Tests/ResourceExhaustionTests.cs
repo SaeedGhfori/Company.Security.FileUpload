@@ -682,3 +682,85 @@ public class ResourceExhaustionTests
         Assert.False(result3.IsValid);
     }
 }
+
+public class MaxConcurrentUploadsTests
+{
+    [Fact]
+    public async Task SetMaxConcurrentUploads_BoundsConcurrency()
+    {
+        const int maxUploads = 2;
+        int concurrent = 0;
+        int peak = 0;
+
+        // Validator runs inside the pipeline's concurrency body, so its
+        // counters reflect the real-level concurrency (no blocking needed).
+        var counting = new CountingValidator(
+            enter: () => Interlocked.Increment(ref concurrent),
+            observe: () => InterlockedMax(ref peak, Volatile.Read(ref concurrent)),
+            exit: () => Interlocked.Decrement(ref concurrent));
+
+        var pipeline = new FileUploadPipelineBuilder()
+            .UseDefaultDetection()
+            .AddValidator(counting)
+            .SetMaxConcurrentUploads(maxUploads)
+            .Build();
+
+        var png = TestFixtures.Png(20, 20);
+        var policy = TestPolicy.AllowExtensions(".png");
+        var tasks = Enumerable.Range(0, 10).Select(async _ =>
+        {
+            var request = new FileUploadRequest
+            {
+                FileStream = new MemoryStream(png),
+                OriginalFileName = "photo.png",
+                Policy = policy
+            };
+            return await pipeline.ProcessAsync(request);
+        }).ToArray();
+
+        var results = await Task.WhenAll(tasks);
+
+        Assert.All(results, r => Assert.True(r.IsValid));
+        Assert.True(peak <= maxUploads, $"observed peak={peak}, maxConcurrentUploads={maxUploads}");
+        Assert.Equal(0, Volatile.Read(ref concurrent));
+    }
+
+    private sealed class CountingValidator : IFileValidator
+    {
+        private readonly Action _enter;
+        private readonly Action _observe;
+        private readonly Action _exit;
+
+        public string Name => nameof(CountingValidator);
+
+        public CountingValidator(Action enter, Action observe, Action exit)
+        {
+            _enter = enter;
+            _observe = observe;
+            _exit = exit;
+        }
+
+        public Task<FileValidationResult> ValidateAsync(Stream stream, FileTypeInfo detectedType, FileUploadRequest request, CancellationToken cancellationToken = default)
+        {
+            _enter();
+            _observe();
+            var result = FileValidationResult.Success(detectedType, StreamHelper.GetLength(stream));
+            _exit();
+            return Task.FromResult(result);
+        }
+    }
+
+    private static int InterlockedMax(ref int target, int value)
+    {
+        int current;
+        do
+        {
+            current = Volatile.Read(ref target);
+            if (current >= value)
+                return current;
+        }
+        while (Interlocked.CompareExchange(ref target, value, current) != current);
+
+        return value;
+    }
+}

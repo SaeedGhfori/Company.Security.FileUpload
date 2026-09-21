@@ -15,5 +15,6 @@ public interface IFileUploadPipelineBuilder
     IFileUploadPipelineBuilder UseMalwareScanner(IMalwareScanner? scanner);
     IFileUploadPipelineBuilder SetMaxConcurrentValidations(int count);
     IFileUploadPipelineBuilder SetMaxQueuedValidations(int count);
+    IFileUploadPipelineBuilder SetMaxConcurrentUploads(int count);
     IFileUploadPipeline Build();
 }
