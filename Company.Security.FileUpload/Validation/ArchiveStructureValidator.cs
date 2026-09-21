@@ -12,6 +12,13 @@ public sealed class ArchiveStructureValidator : IFileValidator
     private const long ZipBombDefaultRatio = 100;
     private const long ZipBombMinimumAbsoluteSize = 10 * 1024 * 1024;
 
+    // When the absolute extracted-size limit is left at its 0 ("unset") default,
+    // we still enforce one so a zip-bomb with a modest ratio (e.g. 50x) but huge
+    // total uncompressed size cannot just cruise past the ratio check. The cap is
+    // a multiple of the per-file size limit, which is the closest safe reference
+    // we have without a second policy knob.
+    private const int DefaultExtractedSizeMultiple = 10;
+
     private static readonly string[] NestedContainerExtensions = { ".zip", ".7z", ".rar", ".gz", ".tar", ".tgz" };
 
     public string Name => nameof(ArchiveStructureValidator);
@@ -66,6 +73,13 @@ public sealed class ArchiveStructureValidator : IFileValidator
                 return FileValidationResult.Failure(errors);
             }
 
+            // Effective absolute cap on extracted size. When the policy leaves it
+            // at its 0 default, we fall back to a safe multiple of the per-file
+            // size limit so ratio-only zip-bomb evasion is not possible.
+            var effectiveMaxExtracted = policy.Structures.ArchiveMaxExtractedSize > 0
+                ? policy.Structures.ArchiveMaxExtractedSize
+                : policy.FileSizes.MaxFileSizeBytes * DefaultExtractedSizeMultiple;
+
             long totalUncompressed = 0;
             long totalCompressed = 0;
 
@@ -84,7 +98,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
                 totalUncompressed += entry.Length;
                 totalCompressed += entry.CompressedLength;
 
-                if (policy.Structures.ArchiveMaxExtractedSize > 0 && totalUncompressed > policy.Structures.ArchiveMaxExtractedSize)
+                if (totalUncompressed > effectiveMaxExtracted)
                 {
                     errors.Add(new FileValidationError(
                         FileValidationErrorCode.StructureZipBombDetected,
@@ -96,7 +110,7 @@ public sealed class ArchiveStructureValidator : IFileValidator
             if (errors.Count > 0)
                 return FileValidationResult.Failure(errors);
 
-            if (policy.Structures.ArchiveMaxExtractedSize > 0 && totalUncompressed > policy.Structures.ArchiveMaxExtractedSize)
+            if (totalUncompressed > effectiveMaxExtracted)
             {
                 errors.Add(new FileValidationError(
                     FileValidationErrorCode.StructureZipBombDetected,
@@ -157,49 +171,54 @@ public sealed class ArchiveStructureValidator : IFileValidator
         try
         {
             using var entryStream = entry.Open();
-            var buffer = ArrayPool<byte>.Shared.Rent(NestedArchiveReadLimit);
-            using var bufferStream = new MemoryStream();
-            var total = 0;
-            int read;
 
+            // Cap the nested payload into a single rented buffer and view it
+            // directly, so ZipArchive needs no second 512KB copy on the LOH.
+            // IMPORTANT: the buffer is returned only after the recursion has
+            // finished consuming it — returning it in the inner finally would
+            // free the array back to the pool while the child levels might
+            // re-rent it, corrupting the child reads.
+            var buffer = ArrayPool<byte>.Shared.Rent(NestedArchiveReadLimit);
             try
             {
-                while ((read = entryStream.Read(buffer, 0, Math.Min(buffer.Length, NestedArchiveReadLimit - total))) > 0)
+                var total = 0;
+                int read;
+                while (total < NestedArchiveReadLimit &&
+                       (read = entryStream.Read(buffer, total, NestedArchiveReadLimit - total)) > 0)
                 {
-                    bufferStream.Write(buffer, 0, read);
                     total += read;
-                    if (total >= NestedArchiveReadLimit)
-                        break;
                 }
+
+                if (total == 0)
+                    return currentDepth;
+
+                using var bufferStream = new MemoryStream(buffer, 0, total, writable: false);
+                using var nested = new ZipArchive(bufferStream, ZipArchiveMode.Read, leaveOpen: false);
+                var nestedContainers = nested.Entries
+                    .Where(e => NestedContainerExtensions.Any(ext => e.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+
+                if (nestedContainers.Count == 0)
+                    return currentDepth;
+
+                if (currentDepth >= maxDepth)
+                    return currentDepth + 1;
+
+                var deepest = currentDepth;
+                foreach (var nestedEntry in nestedContainers)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var d = MeasureEntryDepth(nestedEntry, maxDepth, currentDepth + 1, cancellationToken);
+                    if (d > deepest)
+                        deepest = d;
+                }
+
+                return deepest;
             }
             finally
             {
                 ArrayPool<byte>.Shared.Return(buffer);
             }
-
-            bufferStream.Position = 0;
-
-            using var nested = new ZipArchive(bufferStream, ZipArchiveMode.Read, leaveOpen: false);
-            var nestedContainers = nested.Entries
-                .Where(e => NestedContainerExtensions.Any(ext => e.Name.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
-                .ToList();
-
-            if (nestedContainers.Count == 0)
-                return currentDepth;
-
-            if (currentDepth >= maxDepth)
-                return currentDepth + 1;
-
-            var deepest = currentDepth;
-            foreach (var nestedEntry in nestedContainers)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var d = MeasureEntryDepth(nestedEntry, maxDepth, currentDepth + 1, cancellationToken);
-                if (d > deepest)
-                    deepest = d;
-            }
-
-            return deepest;
         }
         catch (InvalidDataException)
         {

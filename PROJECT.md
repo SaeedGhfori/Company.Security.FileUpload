@@ -79,6 +79,8 @@ services.AddFileUploadPipeline(Action<FileUploadPipelineBuilder>? configure = nu
     // pipeline = builder.Build();
     // services.AddSingleton<IFileUploadPipeline>(pipeline);
     // services.AddSingleton<FileUploadPipeline>(pipeline);   ← همان instance
+services.AddTempFileCleanup()
+    // services.AddSingleton<TempFileCleaner>()   ← اختیاری؛ sweeping temp پس از crash
 ```
 
 ### اینترفیس‌های Core (سیگنچر دقیق)
@@ -165,13 +167,13 @@ public sealed record FileNames
 public sealed record Structures
 {
     RequireStructureValidation = true
-    StructureReadLimitBytes    = 256 * 1024
+    StructureReadLimitBytes    = 64 * 1024
     MaxImageWidth              = 0    // 0 = خاموش
     MaxImageHeight             = 0    // 0 = خاموش
     MaxPixelCount              = 0    // 0 = خاموش
     ArchiveMaxEntries          = 1000
     ArchiveMaxDepth            = 5
-    ArchiveMaxExtractedSize    = 0    // 0 = خاموش
+    ArchiveMaxExtractedSize    = 0    // 0 = «تنظیم‌نشده» → مؤثر: MaxFileSizeBytes × 10
     AllowMacroEnabledOfficeDocuments = false
 }
 
@@ -270,7 +272,7 @@ FileUploadPipeline(IFileDetectionService detectionService,
 5. **موتور seek:** `(stream, shouldDispose) = EnsureSeekableAsync(request.FileStream, policy, ct)`:
    - قابل seek → `(source, false)`.
    - غیر seekable؛ اگر `sizeKnown && size <= FileSizes.TempFileThresholdBytes` → بافر در RAM (`MemoryStream` با بافر `ArrayPool`), `shouldDispose:true`.
-   - در غیر این صورت (نامعلوم/بزرگ) → فایل موقت `ManagedTempFileStream` در `FileSizes.TempDirectory ?? Path.GetTempPath()` (پاک‌سازی‌شده توسط ما در dispose؛ نه `DeleteOnClose`)، کپی تا limit `FileSizes.MaxFileSizeBytes + 1` بایت، `Position = 0`, `shouldDispose:true`. روی خطا: dispose + `File.Delete` و rethrow.
+   - در غیر این صورت (نامعلوم/بزرگ) → فایل موقت `ManagedTempFileStream` در `FileSizes.TempDirectory ?? Path.GetTempPath()` (ساخته‌شده با `FileOptions.DeleteOnClose`؛ پاک‌سازی دستی در `Dispose`/`DisposeAsync` به‌عنوان پشتیبان ـ و `TryDelete` فایل را در بستنِ صریح حذف می‌کند)، کپی تا limit `FileSizes.MaxFileSizeBytes + 1` بایت، `Position = 0`, `shouldDispose:true`. روی خطا: dispose + `File.Delete` و rethrow.
 6. **تشخیص:** `stream.Position = 0`؛ `DetectAsync(stream, declaredExtension: ExtensionResolver.Normalize(OriginalFileName), declaredMimeType, ct)`.
 7. **اعتبارسنجی:** پیمایش ترتیبی همه `_validators`، جمع کردن `Errors` هرکدام (هیچ‌کدام زنجیره را متوقف نمی‌کند).
 8. **اندازه:** `GetSize(stream)` = `Length` اگر seekable وگرنه `Position`.
@@ -323,7 +325,7 @@ FileUploadPipeline(IFileDetectionService detectionService,
    - RIFF (`RIFF` + FMT در offset 8): `"AVI "`→AVI/`,avi /video/x-msvideo`؛ `"WAVE"`→WAV/`.wav`/`audio/wav`؛ `"WEBP"`→WEBP/`.webp`/`image/webp`.
    - EBML (`1A 45 DF A3`): در 512 بایت اول اگر شامل `webm` (ci) باشد → `.webm`/`video/webm`، وگرنه MKV/`.mkv`/`video/x-matroska`.
    - `ftyp` در offset 4: brand در offset 8؛ اگر `qt...` (ci) → MOV/`.mov`/`video/quicktime`، وگرنه MP4/`.mp4`/`video/mp4`.
-   - ZIP (`PK\x03\x04`): `TryDetectZipContainer` — فقط اگر `stream.CanSeek && stream.Length <= 256MB`. `ZipArchive` را باز می‌کند، ورودی `[Content_Types].xml` (سقف 64KB) را می‌خواند؛ شامل `wordprocessingml`→DOCX/`.docx`/office‑wordprocessingml؛ `spreadsheetml`→XLSX/`.xlsx`/office‑spreadsheetml؛ `presentationml`→PPTX/`.pptx`/office‑presentationml؛ هیچ‌کدام→null. تمام استثناهای باز شدن (`InvalidDataException/IOException/ArgumentException/Exception`) → null. position بازیابی می‌شود.
+   - ZIP (`PK\x03\x04`): `TryDetectZipContainer` — فقط اگر `stream.CanSeek && stream.Length <= 256MB` و count ورودی (از EOCD، بدون باز کردن) ≤ 50k (گارد alloc attack). **استراتژی prefix-first:** در پیشوندِ 16KB، جستجوی بایتی (همان ASCII، بدون alloc) برای `[Content_Types].xml` + `wordprocessingml`→DOCX/`spreadsheetml`→XLSX/`presentationml`→PPTX. اگر در prefix یافت نشد → **fallback** به `ZipArchive` (رفتار تاریخی؛ برای موارد نادر که `[Content_Types].xml` بعد از پیشوند است). تمام استثناهای باز شدن → null. position بازیابی می‌شود.
    - OLE‑CFB (`D0 CF 11 E0 A1 B1 1A E1`): اسکن ASCII تا 8192 بایت؛ `WordDocument`→DOC/`.doc`/`application/msword`؛ `Workbook`→XLS/`.xls`/`application/vnd.ms-excel`؛ `PowerPoint Document`→PPT/`.ppt`/`application/vnd.ms-powerpoint`؛ هیچ‌کدام→`OLE-CFB`/Binary/`.doc`/`application/x-ole-storage`.
    - نتیجه container → `BuildFromSignature`.
 3. **کاتالوگ magic bytes** — `_detector.DetectAsync(stream, prefix, 16KB, ct)` (به‌ترتیب اولویت؛ همیشه `HasValidSignature=true`, `IsKnownFormat=true`).
@@ -461,9 +463,9 @@ FileUploadPipeline(IFileDetectionService detectionService,
 - `ValidateZipStructure` (با `ZipArchive`، leaveOpen):
   - `archive.Entries.Count > Structures.ArchiveMaxEntries` → `StructureZipTooManyEntries` (فوری).
   - به‌ازای هر entry: `HasPathTraversal` → `StructureZipPathTraversal`؛ جمع‌آوری `totalUncompressed += entry.Length`, `totalCompressed += entry.CompressedLength`.
-  - `Structures.ArchiveMaxExtractedSize > 0 && totalUncompressed > max` → `StructureZipBombDetected` (فوری).
-  - در پایان: اگر `Structures.ArchiveMaxExtractedSize > 0` و کل بیشتر از max → `StructureZipBombDetected`؛ وگرنه ratio: `totalUncompressed > 10MB && totalUncompressed > totalCompressed * 100` → `StructureZipBombDetected`.
-  - `MeasureNestedDepth` روی entryهایی با پسوند در `{ .zip, .7z, .rar, .gz, .tar, .tgz }`: بازگشتی، هر سطح با سقف خواندن 512KB، `depth > Structures.ArchiveMaxDepth` → `StructureZipDepthExceeded`. سطح فعلی + 1 وقتی محدودیت عمق کل شد.
+  - **سقفِ مطلقِ مؤثر** `effectiveMaxExtracted`: اگر `Structures.ArchiveMaxExtractedSize > 0` → خودِ مقدار؛ وگرنه (پیشفرض 0 = «تنظیم نشده») → `FileSizes.MaxFileSizeBytes × 10`. `totalUncompressed > effectiveMaxExtracted` → `StructureZipBombDetected` (فوری).
+  - در پایان: اگر کل بیشتر از `effectiveMaxExtracted` → `StructureZipBombDetected`؛ وگرنه ratio: `totalUncompressed > 10MB && totalUncompressed > totalCompressed * 100` → `StructureZipBombDetected`.
+  - `MeasureNestedDepth` روی entryهایی با پسوند در `{ .zip, .7z, .rar, .gz, .tar, .tgz }`: بازگشتی، هر سطح با سقف خواندن 512KB (بافر rented از `ArrayPool` که مستقیماً به `ZipArchive` داده می‌شود — بدون `MemoryStream` 512KB روی LOH)، `depth > Structures.ArchiveMaxDepth` → `StructureZipDepthExceeded`. سطح فعلی + 1 وقتی محدودیت عمق کل شد.
   - استثناهای `InvalidDataException`/`IOException`/`ArgumentException`/`InvalidOperationException` → `StructureZipInvalid`.
   - `FileSizeBytes` موفق = `totalUncompressed`.
 - `HasPathTraversal(entryName)`: شامل `..`، شروع با `/` یا `\`، هر `\`، `X:` drive-letter در start، `\0` → true.
@@ -472,7 +474,7 @@ FileUploadPipeline(IFileDetectionService detectionService,
 - فعال فقط اگر `Structures.RequireStructureValidation && Category == Office`. غیر seekable → `StructureUnsupported`.
 - باید `[Content_Types].xml` موجود باشد → وگرنه `StructureOfficeInvalid`.
 - بخش‌های لازم: `DOCX→word/document.xml`، `XLSX→xl/workbook.xml`، `PPTX→ppt/presentation.xml` — با تطبیق نام‌کامل یا پیشوند پوشه‌ی بخش اول → وگرنه `StructureOfficeInvalid`.
-- اگر `!Structures.AllowMacroEnabledOfficeDocuments`: `DetectMacros` → جدید: entry حاوی `vbaProject`، `.../vba/...`، `.bin` حاوی `vba`، یا محتوای `[Content_Types].xml` شامل `vbaProject`/`macrosenabled`/`application/vnd.ms-office.vbaProject` → `StructureOfficeInvalid`.
+- اگر `!Structures.AllowMacroEnabledOfficeDocuments`: `DetectMacros` → جدید: entry حاوی `vbaProject`، `.../vba/...`، `.bin` حاوی `vba`، یا محتوای `[Content_Types].xml` شامل `vbaProject`/`macrosenabled`/`application/vnd.ms-office.vbaProject` → `StructureOfficeInvalid`. خواندن محتوای `[Content_Types].xml` به `max(StructureReadLimitBytes, 4096)` بایت **محدود** است (fail-closed؛ از خواندن کامل محتوای یک archive مخرب جلوگیری می‌کند).
 - `InvalidDataException` → `StructureOfficeInvalid`.
 
 ### `CompositeValidator`
@@ -502,16 +504,18 @@ FileUploadPipeline(IFileDetectionService detectionService,
 
 ## 11. حفره‌ها / نکات پیاده‌سازی (قبل از لمس کد بررسی شود)
 
-1. **`ExtensionMismatchPolicy.Allow`** و **`UnknownFilePolicy.Quarantine`**: در عمل شاخه‌ی خاصی ندارند — `Allow` روی mismatch «بی‌اثر» (نه خطا نه هشدار)، و `Quarantine` همان‌طورِ `Reject` است.
+1. **`ExtensionMismatchPolicy.Allow`** و **`UnknownFilePolicy.Quarantine`**: در `PolicyEngine`/`FileSignatureValidator` حالا به‌صریح `case` دارند — `Allow` روی mismatch `break` میکند (بی‌اثر، نه خطا نه هشدار — رفتارِ عمدیِ Allow)، و `Quarantine` همان‌طورِ `Reject` است (کتابخانه فقط اعتبارسنجی می‌کند، هرگز فایل را «قرنطینه»/ذخیره نمی‌کند). این رفتار از قبل هم همین بود؛ فقط صریح شد.
 2. **`PolicyEngine`** برای `AllowedExtensions`/`AllowedMimeTypes` از `string.Contains` ساده استفاده می‌کند (نه alias‑aware)، در حالی‌که `FileExtensionValidator` با `IsEquivalentExtension` مقایسه می‌کند → عدم تطابق بالقوه بین این دو گیت.
 3. **بافر stream غیر seekable** (در `FileUploadPipeline`): حالا ۳ مسیر — قابل seek → همان؛ `sizeKnown && size ≤ FileSizes.TempFileThresholdBytes` → RAM (`MemoryStream`); در غیر این صورت (بزرگ/نامعلوم) → دیسک با `ManagedTempFileStream` (فایل در `FileSizes.TempDirectory ?? Path.GetTempPath()`، پاکسازی‌شده توسط ما در dispose؛ نه `FileOptions.DeleteOnClose`). اندازه‌ی نامعلوم از `Length` فقط در `CanSeek` خوانده می‌شود — از خواندن `Position` اجتناب می‌شود (چون برخی wrapper های غیر seekable روی `Position` `NotSupportedException` پرتاب می‌کنند).
 
    > رفتار قبلی: `Position` از منبع خوانده می‌شد → روی stream های غیر seekableِ بدون `Position` پرتاب می‌کرد. حالا چنین stream هایی مستقیماً به دیسک می‌روند (RAM نمی‌گیرند).
 4. **همه‌ی validators** هنگام‌که با `Policy == null` داده شوند `InvalidOperationException` پرتاب می‌کنند؛ بنابراین پالیسی در هر مسیر pipeline الزامی است.
 5. **رهاسازی سمانفور** در `OperationCanceledException` با `try/catch {}` — مقاوم در برابر رهاسازیِ سمانفوری که هرگز گرفته نشده (پیشگیری از `SemaphoreFullException`).
-6. **`MeasureNestedDepth`**: عمق آرشیوهایی که باز شدن‌شان با `InvalidDataException` لو می‌رود، null صفر محسوب می‌شود (از `InvalidDataException` پایین می‌ماند).
-7. ساخت کاتالوگ `FileSignatures`: سفارشی از طریق سازنده‌ی `FileSignatureDetector(IEnumerable<FileSignature>)` به end اضافه می‌شود؛ اول‌برابرهای Priority، اولین کدام برنده است → سفارشی‌ها بعد از کاتالوگ به‌دست کار می‌آیند.
-8. تشخیص container ZIP/Office برای فایل‌هایی ≤ 256MB و فقط روی stream seekable باز می‌شود؛ تشخیص Office فقط با بازرسی signature، نه اسم فایل.
+6. **سقفِ مطلقِ استخراج**: وقتی `Structures.ArchiveMaxExtractedSize == 0` (پیشفرض)، به‌جای «خاموش»، مقادیر مؤثر = `FileSizes.MaxFileSizeBytes × 10` است — یک سقفِ مطلق روی کل uncompressed، تا یک zip-bomb با ratio ~۵۰× ولی حجمِ زیاد نتواند از ratio-only رد شود. برای zip های قانونیِ بزرگتر از ۱۰× MaxFileSize، این ممکن است طول بکشد (tradeoff عمدی سلامت به نفع امنیت).
+7. **`MeasureNestedDepth`**: عمق آرشیوهایی که باز شدن‌شان با `InvalidDataException` لو می‌رود، null صفر محسوب می‌شود (از `InvalidDataException` پایین می‌ماند).
+8. ساخت کاتالوگ `FileSignatures`: سفارشی از طریق سازنده‌ی `FileSignatureDetector(IEnumerable<FileSignature>)` به end اضافه می‌شود؛ اول‌برابرهای Priority، اولین کدام برنده است → سفارشی‌ها بعد از کاتالوگ به‌دست کار می‌آیند.
+9. تشخیص container ZIP/Office برای فایل‌هایی ≤ 256MB و فقط روی stream seekable باز می‌شود؛ تشخیص Office فقط با بازرسی signature، نه اسم فایل.
+10. **`TempFileCleaner`** (Pipeline): sweep اختیاریِ فایل‌های موقتِ جا‌مانده پس از crash (وقتی `DeleteOnClose` اجرا نشده). **امن:** فقط فایل‌های هم‌نامِ دقیقِ pipeline را هدف می‌گیرد (`^[0-9a-f]{32}\.tmp$` = `{Guid:N}.tmp`) و فقط آن‌هایی را که ≥ `maxAge` (پیش‌فرض ۲۴ ساعت) سن دارند — بنابراین هرگز فایل `.tmp` متعلق به مؤلفه‌ای دیگر در temp مشترک، یا فایلی که آپلودی در حال نوشتن باشد را حذف نمی‌کند. شمارنده‌های `FilesDeleted`/`BytesDeleted`؛ نبودِ دایرکتوری → ۰. ثبت پیشنهادی در startup با `AddTempFileCleanup()`.
 
 ---
 
@@ -534,7 +538,7 @@ Company.Security.FileUpload/
     Policies/PolicyEngine.cs
   Detection/{ExtensionResolver, FileSignatureDetector, FileTypeResolver,
              MimeDetector, TextFormatDetector}.cs
-  Pipeline/FileUploadPipeline.cs
+  Pipeline/{FileUploadPipeline, TempFileCleaner}.cs
   Validation/{ArchiveStructureValidator, CompositeValidator, FileContentValidator,
               FileExtensionValidator, FileNameValidator, FileSignatureValidator,
               FileSizeValidator, ImageDimensionParser, ImageStructureValidator,

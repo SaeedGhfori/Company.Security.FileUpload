@@ -4,7 +4,7 @@ public sealed record Structures
 {
     public bool RequireStructureValidation { get; init; } = true;
 
-    public int StructureReadLimitBytes { get; init; } = 256 * 1024;
+    public int StructureReadLimitBytes { get; init; } = 64 * 1024;
 
     public int MaxImageWidth { get; init; } = 0;
 

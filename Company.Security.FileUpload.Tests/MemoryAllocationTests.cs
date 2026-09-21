@@ -108,7 +108,7 @@ public class MemoryAllocationTests
         Assert.Equal(10 * 1024 * 1024, policy.FileSizes.TempFileThresholdBytes);
         Assert.Equal(1000, policy.Structures.ArchiveMaxEntries);
         Assert.Equal(5, policy.Structures.ArchiveMaxDepth);
-        Assert.Equal(256 * 1024, policy.Structures.StructureReadLimitBytes);
+        Assert.Equal(64 * 1024, policy.Structures.StructureReadLimitBytes);
         Assert.Equal(255, policy.FileNames.MaxFileNameLength);
         Assert.True(policy.Structures.RequireStructureValidation);
         Assert.True(policy.MalwareScanning.RejectIfMalwareScanUnavailable);

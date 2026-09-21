@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO.Compression;
 using System.Text;
 using Company.Security.FileUpload.Core.Enums;
@@ -82,7 +83,7 @@ public sealed class OfficeStructureValidator : IFileValidator
 
             if (!policy.Structures.AllowMacroEnabledOfficeDocuments)
             {
-                var macroDetected = DetectMacros(archive);
+                var macroDetected = DetectMacros(archive, Math.Max(policy.Structures.StructureReadLimitBytes, 4096));
                 if (macroDetected)
                 {
                     errors.Add(new FileValidationError(
@@ -102,7 +103,7 @@ public sealed class OfficeStructureValidator : IFileValidator
         }
     }
 
-    private static bool DetectMacros(ZipArchive archive)
+    private static bool DetectMacros(ZipArchive archive, int readLimit)
     {
         foreach (var entry in archive.Entries)
         {
@@ -117,13 +118,35 @@ public sealed class OfficeStructureValidator : IFileValidator
                 return true;
         }
 
+        // Check only the macro markers. Reading is bounded to readLimit to avoid
+        // inflating the heap from a maliciously large [Content_Types].xml; a
+        // truncated read keeps macro detection enabled one direction only.
         var contentTypes = archive.GetEntry("[Content_Types].xml");
         if (contentTypes is not null)
         {
             try
             {
-                using var reader = new StreamReader(contentTypes.Open(), Encoding.UTF8);
-                var content = reader.ReadToEnd();
+                var buffer = ArrayPool<byte>.Shared.Rent(Math.Min(readLimit, 8192));
+                var total = 0;
+                try
+                {
+                    using (var entryStream = contentTypes.Open())
+                    {
+                        while (total < readLimit)
+                        {
+                            var read = entryStream.Read(buffer, 0, Math.Min(buffer.Length, readLimit - total));
+                            if (read == 0)
+                                break;
+                            total += read;
+                        }
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+
+                var content = Encoding.UTF8.GetString(buffer, 0, total);
                 if (content.Contains("vbaProject", StringComparison.OrdinalIgnoreCase)
                     || content.Contains("macrosenabled", StringComparison.OrdinalIgnoreCase)
                     || content.Contains("application/vnd.ms-office.vbaProject", StringComparison.OrdinalIgnoreCase))

@@ -24,6 +24,22 @@ public sealed class FileTypeResolver : IFileDetectionService
     private static readonly byte[] ZipLocalHeader = { 0x50, 0x4B, 0x03, 0x04 };
     private static readonly byte[] OleStorageHeader = { 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1 };
 
+    private static readonly FileSignature DocxSignature = new()
+    {
+        FormatName = "DOCX", Category = FileTypeCategory.Office, Extension = ".docx",
+        MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", Priority = 100
+    };
+    private static readonly FileSignature XlsxSignature = new()
+    {
+        FormatName = "XLSX", Category = FileTypeCategory.Office, Extension = ".xlsx",
+        MimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Priority = 100
+    };
+    private static readonly FileSignature PptxSignature = new()
+    {
+        FormatName = "PPTX", Category = FileTypeCategory.Office, Extension = ".pptx",
+        MimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation", Priority = 100
+    };
+
     private readonly FileSignatureDetector _detector;
 
     public FileTypeResolver()
@@ -111,7 +127,7 @@ public sealed class FileTypeResolver : IFileDetectionService
 
         if (prefix.Length >= 4 && prefix.AsSpan(0, 4).SequenceEqual(ZipLocalHeader))
         {
-            return TryDetectZipContainer(stream, cancellationToken);
+            return TryDetectZipContainer(stream, prefix, cancellationToken);
         }
 
         if (prefix.Length >= 8 && prefix.AsSpan(0, 8).SequenceEqual(OleStorageHeader))
@@ -136,7 +152,7 @@ public sealed class FileTypeResolver : IFileDetectionService
         };
     }
 
-    private static FileSignature? TryDetectZipContainer(Stream stream, CancellationToken cancellationToken)
+    private static FileSignature? TryDetectZipContainer(Stream stream, byte[] prefix, CancellationToken cancellationToken)
     {
         if (!stream.CanSeek || stream.Length > MaxOoxmlInspectionFileSize)
             return null;
@@ -152,6 +168,46 @@ public sealed class FileTypeResolver : IFileDetectionService
         if (entryCount is not null && entryCount > MaxDetectZipEntryCount)
             return null;
 
+        // Fast path: in a normal OOXML package, [Content_Types].xml is the first
+        // (or very early) local-file entry, so its name and the format markers
+        // are already visible in the leading prefix captured for detection. We
+        // avoid opening a full ZipArchive on the stream (which seeks to the tail,
+        // reads the central directory, and materializes every entry) for this
+        // common case.
+        var fromPrefix = DetectOfficeFromPrefix(prefix);
+        if (fromPrefix is not null)
+            return fromPrefix;
+
+        // Fallback for OOXML packages whose [Content_Types].xml sits after the
+        // leading prefix: keep the historical ZipArchive path so detection stays
+        // correct for unusual-but-valid packages. The stream must still be
+        // seekable and bounded (guarded above).
+        return TryDetectZipContainerWithArchive(stream, cancellationToken);
+    }
+
+    private static FileSignature? DetectOfficeFromPrefix(byte[] prefix)
+    {
+        // All markers are pure ASCII, so a byte-level search over the captured
+        // prefix avoids an allocation for an ASCII string copy in the hot path.
+        var span = prefix.AsSpan();
+
+        if (span.IndexOf("[Content_Types].xml"u8) < 0)
+            return null;
+
+        if (span.IndexOf("wordprocessingml"u8) >= 0)
+            return DocxSignature;
+
+        if (span.IndexOf("spreadsheetml"u8) >= 0)
+            return XlsxSignature;
+
+        if (span.IndexOf("presentationml"u8) >= 0)
+            return PptxSignature;
+
+        return null;
+    }
+
+    private static FileSignature? TryDetectZipContainerWithArchive(Stream stream, CancellationToken cancellationToken)
+    {
         var originalPosition = stream.Position;
 
         try
@@ -166,19 +222,13 @@ public sealed class FileTypeResolver : IFileDetectionService
             var xml = Encoding.UTF8.GetString(contentTypes);
 
             if (xml.Contains("wordprocessingml", StringComparison.OrdinalIgnoreCase))
-            {
-                return new FileSignature { FormatName = "DOCX", Category = FileTypeCategory.Office, Extension = ".docx", MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", Priority = 100 };
-            }
+                return DocxSignature;
 
             if (xml.Contains("spreadsheetml", StringComparison.OrdinalIgnoreCase))
-            {
-                return new FileSignature { FormatName = "XLSX", Category = FileTypeCategory.Office, Extension = ".xlsx", MimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Priority = 100 };
-            }
+                return XlsxSignature;
 
             if (xml.Contains("presentationml", StringComparison.OrdinalIgnoreCase))
-            {
-                return new FileSignature { FormatName = "PPTX", Category = FileTypeCategory.Office, Extension = ".pptx", MimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation", Priority = 100 };
-            }
+                return PptxSignature;
 
             return null;
         }

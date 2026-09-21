@@ -26,7 +26,13 @@ public static class PolicyEngine
             {
                 case UnknownFilePolicy.Reject:
                 case UnknownFilePolicy.Quarantine:
+                    // Quarantine is intentionally treated identically to Reject in
+                    // this library: it only validates files and never stores one
+                    // aside, so there is no quarantine workflow. Unknown files are
+                    // rejected.
                     errors.Add(new FileValidationError(FileValidationErrorCode.FileTypeUnknown, "Unable to determine the file type."));
+                    break;
+                case UnknownFilePolicy.Allow:
                     break;
             }
         }
@@ -84,6 +90,8 @@ public static class PolicyEngine
                         break;
                     case ExtensionMismatchPolicy.Warn:
                         warnings.Add($"File extension '{Dotted(detectedType.DeclaredExtension)}' does not match the detected type '{detectedType.DetectedExtension}'.");
+                        break;
+                    case ExtensionMismatchPolicy.Allow:
                         break;
                 }
             }
