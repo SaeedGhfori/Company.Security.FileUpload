@@ -13,6 +13,11 @@ public sealed class FileTypeResolver : IFileDetectionService
     private const long MaxOoxmlInspectionFileSize = 256 * 1024 * 1024;
     private const int MaxContentTypesRead = 64 * 1024;
 
+    // Upper bound on the number of ZIP central-directory entries we are willing
+    // to let ZipArchive materialize during detection. Blocks allocation attacks
+    // from a tiny ZIP whose central directory advertises a huge entry count.
+    private const int MaxDetectZipEntryCount = 50_000;
+
     private static readonly byte[] RiffHeader = { 0x52, 0x49, 0x46, 0x46 };
     private static readonly byte[] EbmlHeader = { 0x1A, 0x45, 0xDF, 0xA3 };
     private static readonly byte[] FtypHeader = { 0x66, 0x74, 0x79, 0x70 };
@@ -136,6 +141,17 @@ public sealed class FileTypeResolver : IFileDetectionService
         if (!stream.CanSeek || stream.Length > MaxOoxmlInspectionFileSize)
             return null;
 
+        // Guard against a ZIP whose central directory advertises a huge number
+        // of entries: opening ZipArchive would lazily materialize one
+        // ZipArchiveEntry per entry (each with its own byte[] etc.), which is
+        // an allocation attack with no relation to the real file size. Read the
+        // declared entry count from the EOCD record WITHOUT opening the archive;
+        // if it already exceeds the detection bound we refuse inspection and fall
+        // back to the catalog signature (still reports ZIP).
+        var entryCount = TryReadZipEntryCount(stream);
+        if (entryCount is not null && entryCount > MaxDetectZipEntryCount)
+            return null;
+
         var originalPosition = stream.Position;
 
         try
@@ -187,6 +203,51 @@ public sealed class FileTypeResolver : IFileDetectionService
             if (stream.CanSeek)
                 stream.Position = originalPosition;
         }
+    }
+
+    /// <summary>
+    /// Reads the count of entries declared in the End-Of-Central-Directory (EOCD)
+    /// record of a ZIP stream, without opening a <see cref="ZipArchive"/>.
+    /// Returns <c>null</c> if no EOCD signature (0x06054b50) is found or the value
+    /// cannot be read. The stream must be seekable.
+    /// </summary>
+    public static int? TryReadZipEntryCount(Stream stream)
+    {
+        if (!stream.CanSeek || stream.Length < 22)
+            return null;
+
+        var eocdSearch = (int)Math.Min(stream.Length, 65536 + 22);
+        var tail = new byte[eocdSearch];
+
+        var originalPosition = stream.Position;
+        long scannedEnd;
+        try
+        {
+            stream.Position = originalPosition;
+            stream.Position = stream.Length - eocdSearch;
+            var read = stream.Read(tail, 0, tail.Length);
+            scannedEnd = read;
+            if (read == 0)
+                return null;
+        }
+        finally
+        {
+            stream.Position = originalPosition;
+        }
+
+        // EOCD begins with signature 0x06054b50 (little-endian). Entry count is
+        // a ushort at relative offset 10. The first EOCD from the end is the real
+        // one; scanning backward avoids false signatures inside earlier payload.
+        for (var offset = scannedEnd - 22; offset >= 0; offset--)
+        {
+            if (tail[offset] == 0x50 && tail[offset + 1] == 0x4B &&
+                tail[offset + 2] == 0x05 && tail[offset + 3] == 0x06)
+            {
+                return tail[offset + 10] | (tail[offset + 11] << 8);
+            }
+        }
+
+        return null;
     }
 
     private static byte[]? ReadEntryPrefix(ZipArchive archive, string entryName, int maxBytes)

@@ -221,38 +221,9 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
         if (source.CanSeek)
             return (source, false);
 
-        long fileSize = 0;
-        bool sizeKnown = false;
-
-        // Determine file size if possible (Length may throw NotSupportedException on
-        // non-seekable wrappers, so only read it when CanSeek is true).
-        if (source.CanSeek && source.Length >= 0)
-        {
-            fileSize = source.Length;
-            sizeKnown = true;
-        }
-
-        // Small, known-size streams at or below the RAM threshold buffer in memory.
-        if (sizeKnown && fileSize <= policy.FileSizes.TempFileThresholdBytes)
-        {
-            var buffer = new byte[fileSize];
-            var read = 0L;
-            while (read < fileSize)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var count = await source.ReadAsync(buffer.AsMemory((int)read, (int)(fileSize - read)), cancellationToken);
-                if (count == 0)
-                    break;
-                read += count;
-            }
-
-            var memoryStream = new MemoryStream(buffer, writable: false);
-            memoryStream.Position = 0;
-            return (memoryStream, true);
-        }
-
-        // Larger or unknown-size streams buffer to a temp file we own, so they never
-        // live in RAM and the temp file is deleted by us on dispose (not left to the OS).
+        // Non-seekable streams always buffer to a temp file we own, never fully
+        // into RAM. A large upload or a slow producer must not inflate the heap;
+        // the temp file is deleted by us on dispose (not left to the OS).
         return await BufferToTempFileAsync(source, policy, cancellationToken);
     }
 
