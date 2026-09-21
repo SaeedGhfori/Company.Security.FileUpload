@@ -10,7 +10,6 @@ public class NonSeekableStreamTests
 {
     private static IFileUploadPipeline NewPipeline() => TestPolicy.BuildPipeline();
 
-    // Non-seekable stream should be validated without full-file RAM buffering
     [Fact]
     public async Task NonSeekableStream_ValidPng_Accepted()
     {
@@ -89,7 +88,6 @@ public class MemoryAllocationTests
         new Random(42).NextBytes(content);
         using var stream = new MemoryStream(content);
 
-        // This just verifies it doesn't throw — ArrayPool return is verified by code review
         var prefix = StreamHelper.ReadPrefixAsync(stream, 256, CancellationToken.None).Result;
 
         Assert.Equal(256, prefix.Length);
@@ -190,7 +188,7 @@ public class StreamOwnershipTests
         var result = await pipeline.ProcessAsync(request);
 
         Assert.True(result.IsValid);
-        Assert.True(ms.CanRead); // Stream should still be open and readable
+        Assert.True(ms.CanRead);
         ms.Dispose();
     }
 

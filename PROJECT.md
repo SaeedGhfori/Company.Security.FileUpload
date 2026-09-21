@@ -12,7 +12,7 @@
 |---|---|
 | هدف | کتابخانه اعتبارسنجی امن آپلود فایل (OWASP‑based) |
 | Target Framework | `net10.0` |
-| وابستگی NuGet (Core) | فقط `Microsoft.Extensions.Logging.Abstractions` 10.0.0 — بقیه BCL خالص |
+| وابستگی NuGet (Core) | فقط `Microsoft.Extensions.DependencyInjection.Abstractions` 10.0.0 (فقط برای `FileUploadPipelineExtensions`/DI) — بقیه BCL خالص؛ `Microsoft.Extensions.Logging.Abstractions` حذف شد چون `FileUploadPipeline` دیگر لاگ نمی‌گیرد |
 | خاصیت‌های csproj | `ImplicitUsings: enable`، `Nullable: enable`، `GenerateDocumentationFile: true`، `Version 1.0.0`، `PackageId: Company.Security.FileUpload` |
 | نام‌ها | `Company` / `Company Security Team` / MIT |
 | ایده اصلی | هرگز به نام/پسوند/MIME/اندازه اعلام‌شده اعتماد نمی‌کند؛ بایت واقعی + ساختار container بررسی بعدی |
@@ -38,6 +38,8 @@ Company.Security.FileUpload            ← ریشه: Builder + DI extension
 ├── Detection/        ExtensionResolver, FileSignatureDetector,
 │                     FileTypeResolver, MimeDetector, TextFormatDetector
 ├── Pipeline/         FileUploadPipeline.cs      (هماهنگ‌کننده اصلی)
+│                     TempFileStream.cs          (wrapper فایل موقت DeleteOnClose)
+│                     TempFileCleaner.cs         (sweep اختیاری فایل‌های موقت جا‌مانده)
 └── Validation/       FileNameValidator, FileExtensionValidator,
                       FileSizeValidator, FileSignatureValidator,
                       FileContentValidator, ImageStructureValidator,
@@ -61,6 +63,7 @@ public sealed class FileUploadPipelineBuilder : IFileUploadPipelineBuilder
     UseMalwareScanner(IMalwareScanner? scanner)
     SetMaxConcurrentValidations(int count)      // پیش‌فرض 32
     SetMaxQueuedValidations(int count)          // پیش‌فرض 32
+    SetMaxConcurrentUploads(int count)          // پیش‌فرض 10
     AddValidator(IFileValidator validator)      // اضافه به لیست (بدون clear)
     WithDefaultValidators()                     // clear سپس افزودن 9 اعتبارسنج پیش‌فرض نه تایی
     Build() → FileUploadPipeline
@@ -153,7 +156,7 @@ public sealed record FileSizes
 {
     MaxFileSizeBytes    = 10 * 1024 * 1024
     MinFileSizeBytes    = 0
-    TempFileThresholdBytes = 10 * 1024 * 1024 // سقف RAM؛ بزرگ‌تر/نامعلوم → دیسک
+    TempFileThresholdBytes = 10 * 1024 * 1024 // آستانه‌ی دیسک برای stream غیر seekable (با TempDirectory)
     TempDirectory       = null // پوشه‌ی فایل موقت؛ null → Path.GetTempPath()
 }
 
@@ -256,11 +259,11 @@ Factory‌ها: `Success(detectedType, fileSizeBytes)`، `Failure(params)`، `Fa
 FileUploadPipeline(IFileDetectionService detectionService,
     IEnumerable<IFileValidator> validators,
     IMalwareScanner? malwareScanner = null,
-    ILogger? logger = null,
     int maxConcurrentUploads = 10,
     int maxConcurrentValidations = 32,
     int maxQueuedValidations = 32)
 ```
+(پارامتر `ILogger? logger = null` در پاکسازی حذف شد — pipeline هیچ‌وقت لاگ نمی‌کرد.)
 - `_concurrencySemaphore = new SemaphoreSlim(maxConcurrentUploads)`
 - `_validationSemaphore = new SemaphoreSlim(maxQueued + maxConcurrent)`
 
@@ -271,8 +274,7 @@ FileUploadPipeline(IFileDetectionService detectionService,
 4. **برنامه‌ریزی:** `WaitAsync(_concurrencySemaphore)` ← سپس `WaitAsync(_validationSemaphore)`.
 5. **موتور seek:** `(stream, shouldDispose) = EnsureSeekableAsync(request.FileStream, policy, ct)`:
    - قابل seek → `(source, false)`.
-   - غیر seekable؛ اگر `sizeKnown && size <= FileSizes.TempFileThresholdBytes` → بافر در RAM (`MemoryStream` با بافر `ArrayPool`), `shouldDispose:true`.
-   - در غیر این صورت (نامعلوم/بزرگ) → فایل موقت `ManagedTempFileStream` در `FileSizes.TempDirectory ?? Path.GetTempPath()` (ساخته‌شده با `FileOptions.DeleteOnClose`؛ پاک‌سازی دستی در `Dispose`/`DisposeAsync` به‌عنوان پشتیبان ـ و `TryDelete` فایل را در بستنِ صریح حذف می‌کند)، کپی تا limit `FileSizes.MaxFileSizeBytes + 1` بایت، `Position = 0`, `shouldDispose:true`. روی خطا: dispose + `File.Delete` و rethrow.
+   - غیر seekable → همیشه به فایل موقت `ManagedTempFileStream` در `FileSizes.TempDirectory ?? Path.GetTempPath()` (ساخته‌شده با `FileOptions.DeleteOnClose`؛ `TryDelete` در `Dispose`/`DisposeAsync` حذف را به‌عنوان پشتیبان برای سیستمی که `DeleteOnClose` را رعایت نمی‌کند تضمین می‌کند)، کپی تا limit `FileSizes.MaxFileSizeBytes + 1` بایت، `Position = 0`, `shouldDispose:true`. روی خطا: dispose + `File.Delete` و rethrow. (مسیر RAM در پاکسازی حذف شد؛ بافر دیسک همیشه در دسترس است و حافظه را در برابر آپلودهای همزمانِ بزرگ محدود نگه می‌دارد.)
 6. **تشخیص:** `stream.Position = 0`؛ `DetectAsync(stream, declaredExtension: ExtensionResolver.Normalize(OriginalFileName), declaredMimeType, ct)`.
 7. **اعتبارسنجی:** پیمایش ترتیبی همه `_validators`، جمع کردن `Errors` هرکدام (هیچ‌کدام زنجیره را متوقف نمی‌کند).
 8. **اندازه:** `GetSize(stream)` = `Length` اگر seekable وگرنه `Position`.
@@ -376,8 +378,7 @@ FileUploadPipeline(IFileDetectionService detectionService,
 (همه text ‑نتایج `HasValidSignature=true, IsKnownFormat=true`.)
 
 ### `MimeDetector` (static)
-- `Resolve(signature?, customDetected?)` → MIME از signature یا از custom.
-- `IsSuspectMime(declared, detected)`: هردو مقادیر خالی→false؛ قیاس با مستثنی‌کردن `;params` و lowercase؛ برابر→false؛ `declared == "application/octet-stream"`→false؛ در غیر این صورت true (مشکوک/ناهماهنگ).
+- `IsSuspectMime(declared, detected)`: هردو مقادیر خالی→false؛ قیاس با مستثنی‌کردن `;params` و lowercase؛ برابر→false؛ `declared == "application/octet-stream"`→false؛ در غیر این صورت true (مشکوک/ناهماهنگ). (متد `Resolve` در پاکسازی حذف شد — هیچ فراخوانی نداشت؛ MIME مقصد از `detectedType.DetectedMimeType` ساخته‌شده توسط detection می‌آید.)
 
 ### `FileExtensionRegistry` (static) — `Core/Extensions/FileExtensionRegistry.cs`
 کاتالوگ داخلی و جامعِ پسوندهای مجاز، بر اساس `FileTypeCategory`، ساخته‌شده از `FileSignatures.All` + پسوندهای متداولِ هر دسته (lcase بدون نقطه). این رجیستری همان «allowlist بزرگ» درون کتابخانه است که caller لازم نیست از بیرون بسازد.
@@ -506,9 +507,9 @@ FileUploadPipeline(IFileDetectionService detectionService,
 
 1. **`ExtensionMismatchPolicy.Allow`** و **`UnknownFilePolicy.Quarantine`**: در `PolicyEngine`/`FileSignatureValidator` حالا به‌صریح `case` دارند — `Allow` روی mismatch `break` میکند (بی‌اثر، نه خطا نه هشدار — رفتارِ عمدیِ Allow)، و `Quarantine` همان‌طورِ `Reject` است (کتابخانه فقط اعتبارسنجی می‌کند، هرگز فایل را «قرنطینه»/ذخیره نمی‌کند). این رفتار از قبل هم همین بود؛ فقط صریح شد.
 2. **`PolicyEngine`** برای `AllowedExtensions`/`AllowedMimeTypes` از `string.Contains` ساده استفاده می‌کند (نه alias‑aware)، در حالی‌که `FileExtensionValidator` با `IsEquivalentExtension` مقایسه می‌کند → عدم تطابق بالقوه بین این دو گیت.
-3. **بافر stream غیر seekable** (در `FileUploadPipeline`): حالا ۳ مسیر — قابل seek → همان؛ `sizeKnown && size ≤ FileSizes.TempFileThresholdBytes` → RAM (`MemoryStream`); در غیر این صورت (بزرگ/نامعلوم) → دیسک با `ManagedTempFileStream` (فایل در `FileSizes.TempDirectory ?? Path.GetTempPath()`، پاکسازی‌شده توسط ما در dispose؛ نه `FileOptions.DeleteOnClose`). اندازه‌ی نامعلوم از `Length` فقط در `CanSeek` خوانده می‌شود — از خواندن `Position` اجتناب می‌شود (چون برخی wrapper های غیر seekable روی `Position` `NotSupportedException` پرتاب می‌کنند).
+3. **بافر stream غیر seekable** (در `FileUploadPipeline`): حالا ۲ مسیر — قابل seek → همان؛ غیر seekable → دیسک با `ManagedTempFileStream` (فایل در `FileSizes.TempDirectory ?? Path.GetTempPath()`، ساخته‌شده با `FileOptions.DeleteOnClose` + پشتیبان `TryDelete` در dispose). اندازه‌ی نامعلوم از `Length` فقط در `CanSeek` خوانده می‌شود — از خواندن `Position` اجتناب می‌شود (چون برخی wrapper های غیر seekable روی `Position` `NotSupportedException` پرتاب می‌کنند).
 
-   > رفتار قبلی: `Position` از منبع خوانده می‌شد → روی stream های غیر seekableِ بدون `Position` پرتاب می‌کرد. حالا چنین stream هایی مستقیماً به دیسک می‌روند (RAM نمی‌گیرند).
+   > رفتار قبلی: مسیر RAM (`TempFileThresholdBytes`) هم بود → در پاکسازی حذف شد؛ غیر seekable همیشه به دیسک می‌رود (RAM نمی‌گیرد). `GetSize` برای غیر seekable `stream.Position` را می‌خواند — امن است چون مسیر غیر seekable همیشه ابتدا به فایل موقت seekable تبدیل شده است.
 4. **همه‌ی validators** هنگام‌که با `Policy == null` داده شوند `InvalidOperationException` پرتاب می‌کنند؛ بنابراین پالیسی در هر مسیر pipeline الزامی است.
 5. **رهاسازی سمانفور** در `OperationCanceledException` با `try/catch {}` — مقاوم در برابر رهاسازیِ سمانفوری که هرگز گرفته نشده (پیشگیری از `SemaphoreFullException`).
 6. **سقفِ مطلقِ استخراج**: وقتی `Structures.ArchiveMaxExtractedSize == 0` (پیشفرض)، به‌جای «خاموش»، مقادیر مؤثر = `FileSizes.MaxFileSizeBytes × 10` است — یک سقفِ مطلق روی کل uncompressed، تا یک zip-bomb با ratio ~۵۰× ولی حجمِ زیاد نتواند از ratio-only رد شود. برای zip های قانونیِ بزرگتر از ۱۰× MaxFileSize، این ممکن است طول بکشد (tradeoff عمدی سلامت به نفع امنیت).
@@ -538,7 +539,7 @@ Company.Security.FileUpload/
     Policies/PolicyEngine.cs
   Detection/{ExtensionResolver, FileSignatureDetector, FileTypeResolver,
              MimeDetector, TextFormatDetector}.cs
-  Pipeline/{FileUploadPipeline, TempFileCleaner}.cs
+  Pipeline/{FileUploadPipeline, TempFileStream, TempFileCleaner}.cs
   Validation/{ArchiveStructureValidator, CompositeValidator, FileContentValidator,
               FileExtensionValidator, FileNameValidator, FileSignatureValidator,
               FileSizeValidator, ImageDimensionParser, ImageStructureValidator,

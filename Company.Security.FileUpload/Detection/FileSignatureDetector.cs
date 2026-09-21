@@ -20,8 +20,6 @@ public sealed class FileSignatureDetector
         _signatures = list.AsReadOnly();
     }
 
-    public IReadOnlyList<FileSignature> Signatures => _signatures;
-
     public ValueTask<FileSignature?> DetectAsync(Stream stream, int readLimit, CancellationToken cancellationToken)
         => DetectAsync(stream, null, readLimit, cancellationToken);
 

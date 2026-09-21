@@ -7,7 +7,9 @@
 بایت‌های واقعی را بررسی می‌کند (magic bytes + ساختار container)، هر اعلامیه را با واقعیت تطبیق
 می‌دهد، یک *پالیسی* قابل استفاده مجدد اعمال می‌کند، و اختیاری اسکنر بدافزار اجرا می‌کند.
 
-> **قانون طراحی:** کتابخانه Core **هیچ وابستگی NuGet خارجی ندارد** — فقط روی BCL اجرا
+> **قانون طراحی:** کتابخانه Core تقریباً بدون وابستگی است — تنها paket‌ی آن،
+> `Microsoft.Extensions.DependencyInjection.Abstractions` است که فقط برای
+> ماکروی DI (`AddFileUploadPipeline`) به‌کار می‌رود. همه‌ی اعتبارسنجی روی BCL خالص اجرا
 > می‌شود. اسکنر بدافزار خودتان (ClamAV، Windows Defender، ...) را از طریق رابط کوچک
 > `IMalwareScanner` متصل کنید.
 
@@ -49,7 +51,7 @@
   unknown.
 - **محدودیت‌های منابع در همه جا** — هر مرحله `CancellationToken` و خواندن‌های محدود را رعایت
   می‌کند.
-- **صفر وابستگی خارجی در Core** — هدف `net10.0`، فقط BCL.
+- **وابستگی حداقلی در Core** — هدف `net10.0`؛ تنها پکیج NuGet، `DependencyInjection.Abstractions` برای دی‌آی اختیاری است.
 
 ---
 
@@ -136,7 +138,7 @@ else
 
 `FileUploadPipeline.ProcessAsync(request)` یک جریان ثابت و متوالی اجرا می‌کند:
 
-1. **قابلیت seek** — اگر stream قابل seek نبود، تا `FileSizes.MaxFileSizeBytes + 1` بافر می‌شود.
+1. **قابلیت seek** — اگر stream قابل seek نبود، تا `FileSizes.MaxFileSizeBytes + 1` بایت روی دیسک بافر می‌شود (فایل موقت با `DeleteOnClose`).
 2. **تشخیص** — `IFileDetectionService.DetectAsync` یک پیشوند محدود خوانده و `FileTypeInfo`
    برمی‌گرداند (پسوند، MIME، دسته‌بندی، فرمت، نتیجه سیگنچر).
 3. **اعتبارسنج‌ها** — هر `IFileValidator` روی نوع تشخیص‌داده‌شده و درخواست اجرا می‌شود و
@@ -178,7 +180,7 @@ Task<FileValidationResult> ProcessAsync(FileUploadRequest request, CancellationT
 |---|---|---|
 | `FileKinds` | **چه نوع فایلی مجاز است** | دسته‌ها، پسوندها، MIMEها، فرمت‌ها + سیاست فایل ناشناخته و عدم تطابق پسوند |
 | `FileNames` | **نام فایل چه شکلی باشد** | حداکثر طول، اجازه‌ی بدون پسوند / چندپسوندی |
-| `FileSizes` | **اندازه و مصرف حافظه** | حداکثر/حداقل اندازه، آستانه‌ی بافر RAM، پوشه‌ی فایل موقت |
+| `FileSizes` | **اندازه و مصرف دیسک/حافظه** | حداکثر/حداقل اندازه، آستانه‌ی دیسک، پوشه‌ی فایل موقت |
 | `Structures` | **بررسی ساختار واقعی container** | ساختار تصویر/PDF/آرشیو/Office، محدودیت ابعاد و pixel‑bomb، ماکرو |
 | `MalwareScanning` | **اسکن بدافزار** | اجرا/رد/قبول در برابر خطا و نتیجه‌ی بی‌نتیجه |
 
@@ -219,13 +221,13 @@ var p2 = policy with { FileSizes = policy.FileSizes with { MaxFileSizeBytes = 20
 | `AllowMultipleExtensions` | `false` | فایل‌هایی مانند `file.tar.gz` مجاز باشند |
 | `MaxFileNameLength` | `255` | حداکثر طول نام فایل |
 
-### `FileSizes` — اندازه و بافر موقت
+### `FileSizes` — اندازه و فایل موقت دیسک
 
 | زیرخاصیت | پیش‌فرض | بررسی |
 |---|---|---|
 | `MaxFileSizeBytes` | 10 MB | حداکثر اندازه مطلق |
 | `MinFileSizeBytes` | 0 | حداقل اندازه |
-| `TempFileThresholdBytes` | 10 MB | سقف RAM برای بافر؛ بزرگ‌تر/نامعلوم → دیسک |
+| `TempFileThresholdBytes` | 10 MB | آستانه‌ی دیسک برای stream غیر seekable (با `TempDirectory`) |
 | `TempDirectory` | null | پوشه‌ی فایل موقت سفارشی؛ null → `Path.GetTempPath()` |
 
 ### `Structures` — اعتبارسنجی ساختار
@@ -268,7 +270,7 @@ Console.WriteLine(detected.HasValidSignature);           // true
 Console.WriteLine(detected.IsKnownFormat);               // true
 ```
 
-لایه‌های تشخیص (FileTokenTypeResolver):
+لایه‌های تشخیص (`FileTypeResolver`):
 1. **بازبینی container** — RIFF → AVI/WAV/WEBP; EBML → MKV/WEBM; `ftyp` → MP4/MOV;
    ZIP → DOCX/XLSX/PPTX از طریق `[Content_Types].xml`; OLE‑CFB → DOC/XLS/PPT.
 2. **کاتالوگ magic bytes** — `FileSignatureDetector` + `FileSignatures`.
@@ -373,8 +375,8 @@ ValidationDuration         // TimeSpan — مدت زمان بررسی
 ## عملکرد و محدودیت‌ها
 
 - اعتبارسنجی ساختار حداکثر `Structures.StructureReadLimitBytes` (پیش‌فرض **256 KB**) می‌خواند.
-- Streamهای غیر seekable تا `FileSizes.MaxFileSizeBytes + 1` بافر می‌شوند؛ رشد بیشتر به عنوان
-  `FileTooLarge` تلقی می‌شود.
+- Streamهای غیر seekable تا `FileSizes.MaxFileSizeBytes + 1` روی دیسک (فایل موقت با
+  `DeleteOnClose`) بافر می‌شوند؛ رشد بیشتر به عنوان `FileTooLarge` تلقی می‌شود.
 - بازرسی آرشیو خواندن‌های uncompressed را محدود می‌کند و هدر ZIP را روی stream ای که به
   موقعیت اصلی بازگردانده می‌شود بررسی می‌کند.
 
@@ -413,7 +415,7 @@ dotnet build "Company.Security.FileUpload.slnx" -c Release
 dotnet test "Company.Security.FileUpload.Tests" -c Debug
 ```
 
-نیازمندی: .NET 10 SDK. کتابخانه روی `net10.0` هدف دارد و فقط به BCL وابسته است.
+نیازمندی: .NET 10 SDK. کتابخانه روی `net10.0` هدف دارد (فقط وابستگی: `DependencyInjection.Abstractions` برای دی‌آی اختیاری).
 
 ---
 
@@ -436,6 +438,8 @@ Company.Security.FileUpload/
   Validation/                          # اعتبارسنج‌های نام/پسوند/اندازه/امضا/محتوا + ساختار
                                        # (تصویر، PDF، آرشیو، آفیس)، StreamHelper
   Pipeline/FileUploadPipeline.cs       # هماهنگ‌کننده اصلی
+  Pipeline/TempFileStream.cs           # فایل موقت DeleteOnClose برای stream غیر seekable
+  Pipeline/TempFileCleaner.cs          # sweep اختیاری فایل‌های موقت جا‌مانده پس از crash
   FileUploadPipelineBuilder.cs         # ساخت ترکیبی
 Company.Security.FileUpload.Tests/     # مجموعه تست xUnit (مبتنی بر OWASP)
 ```

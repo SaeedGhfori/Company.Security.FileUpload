@@ -153,7 +153,7 @@ internal static class TestFixtures
     {
         var buf = new MemoryStream();
         buf.Write(Encoding.ASCII.GetBytes("RIFF"));
-        buf.Write(BitConverter.GetBytes(20 + 12L)); // RIFF size placeholder (webp chunk small)
+        buf.Write(BitConverter.GetBytes(20 + 12L));
         buf.Write(Encoding.ASCII.GetBytes("WEBP"));
         buf.Write(Encoding.ASCII.GetBytes("VP8L"));
         buf.Write(BitConverter.GetBytes(4));

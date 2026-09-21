@@ -1,17 +1,7 @@
-using Company.Security.FileUpload.Core.Models;
-
 namespace Company.Security.FileUpload.Detection;
 
 public static class MimeDetector
 {
-    public static string? Resolve(FileSignature? signature, FileTypeInfo? customDetected)
-    {
-        if (signature is not null)
-            return signature.MimeType;
-
-        return customDetected?.DetectedMimeType;
-    }
-
     public static bool IsSuspectMime(string? declaredMime, string? detectedMime)
     {
         if (string.IsNullOrWhiteSpace(declaredMime) || string.IsNullOrWhiteSpace(detectedMime))
