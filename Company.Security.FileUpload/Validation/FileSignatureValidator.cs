@@ -33,9 +33,6 @@ public sealed class FileSignatureValidator : IFileValidator
         }
         else if (detectedType.IsKnownFormat)
         {
-            // Resolve the effective allowlist. When the configured list is non-empty, the detected
-            // signature's extension must be in it; when empty, every registered extension for the
-            // detected category is allowed.
             var effectiveAllowed = FileExtensionRegistry.ResolveEffectiveAllowed(detectedType.Category, policy.FileKinds.AllowedExtensions);
 
             if (!FileExtensionRegistry.ContainsExtension(effectiveAllowed, detectedType.DetectedExtension))
@@ -48,7 +45,6 @@ public sealed class FileSignatureValidator : IFileValidator
             var declaredExtension = ExtensionResolver.Normalize(request.OriginalFileName);
             if (!string.IsNullOrEmpty(declaredExtension))
             {
-                // The declared extension must also be within the (possibly per-call) allowlist.
                 if (!FileExtensionRegistry.ContainsExtension(effectiveAllowed, declaredExtension))
                 {
                     errors.Add(new FileValidationError(

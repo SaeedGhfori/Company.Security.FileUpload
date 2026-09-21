@@ -6,7 +6,6 @@ namespace Company.Security.FileUpload.Validation;
 
 public sealed class ImageStructureValidator : IFileValidator
 {
-    private const int JpegMaxScanBytes = 65536;
     private static readonly HashSet<string> ImageFormats = new(StringComparer.OrdinalIgnoreCase)
     {
         "JPEG", "PNG", "GIF", "BMP", "WEBP", "TIFF"

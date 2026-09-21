@@ -4,10 +4,6 @@ namespace Company.Security.FileUpload.Tests;
 
 public class TempFileCleanerTests
 {
-    // The pipeline creates temp files named {Guid:N}.tmp (32 lowercase hex). The
-    // cleaner must delete exactly those and only when they are older than maxAge,
-    // so it can never remove a .tmp file owned by another component in the shared
-    // temp directory or one an in-flight upload may still be writing to.
     [Fact]
     public void DeletesOnlyStalePipelineTempFiles()
     {
@@ -25,7 +21,6 @@ public class TempFileCleanerTests
             File.WriteAllText(foreignFile, "x");
             File.WriteAllText(nonTemp, "x");
 
-            // Make the "stale" file old, the "fresh" one recent.
             File.SetLastWriteTimeUtc(stalePipeline, DateTime.UtcNow - TimeSpan.FromHours(48));
 
             var cleaner = new TempFileCleaner();

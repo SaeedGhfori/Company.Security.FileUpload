@@ -13,9 +13,6 @@ public sealed class FileTypeResolver : IFileDetectionService
     private const long MaxOoxmlInspectionFileSize = 256 * 1024 * 1024;
     private const int MaxContentTypesRead = 64 * 1024;
 
-    // Upper bound on the number of ZIP central-directory entries we are willing
-    // to let ZipArchive materialize during detection. Blocks allocation attacks
-    // from a tiny ZIP whose central directory advertises a huge entry count.
     private const int MaxDetectZipEntryCount = 50_000;
 
     private static readonly byte[] RiffHeader = { 0x52, 0x49, 0x46, 0x46 };
@@ -157,13 +154,6 @@ public sealed class FileTypeResolver : IFileDetectionService
         if (!stream.CanSeek || stream.Length > MaxOoxmlInspectionFileSize)
             return null;
 
-        // Guard against a ZIP whose central directory advertises a huge number
-        // of entries: opening ZipArchive would lazily materialize one
-        // ZipArchiveEntry per entry (each with its own byte[] etc.), which is
-        // an allocation attack with no relation to the real file size. Read the
-        // declared entry count from the EOCD record WITHOUT opening the archive;
-        // if it already exceeds the detection bound we refuse inspection and fall
-        // back to the catalog signature (still reports ZIP).
         var entryCount = TryReadZipEntryCount(stream);
         if (entryCount is not null && entryCount > MaxDetectZipEntryCount)
             return null;
@@ -243,12 +233,6 @@ public sealed class FileTypeResolver : IFileDetectionService
         }
     }
 
-    /// <summary>
-    /// Reads the count of entries declared in the End-Of-Central-Directory (EOCD)
-    /// record of a ZIP stream, without opening a <see cref="ZipArchive"/>.
-    /// Returns <c>null</c> if no EOCD signature (0x06054b50) is found or the value
-    /// cannot be read. The stream must be seekable.
-    /// </summary>
     public static int? TryReadZipEntryCount(Stream stream)
     {
         if (!stream.CanSeek || stream.Length < 22)
@@ -273,9 +257,6 @@ public sealed class FileTypeResolver : IFileDetectionService
             stream.Position = originalPosition;
         }
 
-        // EOCD begins with signature 0x06054b50 (little-endian). Entry count is
-        // a ushort at relative offset 10. The first EOCD from the end is the real
-        // one; scanning backward avoids false signatures inside earlier payload.
         for (var offset = scannedEnd - 22; offset >= 0; offset--)
         {
             if (tail[offset] == 0x50 && tail[offset + 1] == 0x4B &&

@@ -5,24 +5,14 @@ using Company.Security.FileUpload.Core.Models;
 
 namespace Company.Security.FileUpload.Tests;
 
-/// <summary>
-/// Reproduces the "many concurrent MAX-SIZE non-seekable uploads" scenario at
-/// bounded scale: every upload must be buffered to the temp disk (non-seekable),
-/// the concurrency budget guarantees fewer than N files touch the disk at once,
-/// and nothing leaks after processing.
-///
-/// The unit test replays the shape (real bytes, real temp writes, real gate)
-/// but bounded in count/size; the BenchmarkApp brings the same shape up to
-/// 1000 x 100MB with measured numbers.
-/// </summary>
 public class NonSeekableDiskBudgetTests
 {
     [Fact]
     public async Task NonSeekableUploads_ConcurrencyBudget_And_TempCleanup()
     {
-        const int maxUploads = 2;      // the resource budget: <=2 files may hit the temp disk concurrently
-        const int totalUploads = 6;    // 3x the budget; the rest must queue behind the disk gate
-        const long fileSize = 64L * 1024 * 1024; // 64 MB per upload
+        const int maxUploads = 2;
+        const int totalUploads = 6;
+        const long fileSize = 64L * 1024 * 1024;
 
         var tempDir = Path.Combine(Path.GetTempPath(), "FileUpload_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
@@ -40,7 +30,7 @@ public class NonSeekableDiskBudgetTests
             {
                 TempDirectory = tempDir,
                 MaxFileSizeBytes = fileSize,
-                TempFileThresholdBytes = 1 // everything non-seekable goes straight to disk
+                TempFileThresholdBytes = 1
             },
             Structures = new Structures { RequireStructureValidation = false }
         };
@@ -59,15 +49,11 @@ public class NonSeekableDiskBudgetTests
 
         var results = await Task.WhenAll(tasks);
 
-        // Every upload succeeded end-to-end.
         Assert.All(results, r => Assert.True(r.IsValid, r.Errors.FirstOrDefault()?.Code.ToString()));
 
-        // The concurrency budget capped how many non-seekable streams were
-        // draining to the temp disk at once.
         Assert.True(active.Peak <= maxUploads,
             $"observed peak concurrent temp buffering {active.Peak} > budget {maxUploads}");
 
-        // No temp file survived processing (DeleteOnClose + disposal).
         Assert.Empty(Directory.EnumerateFiles(tempDir));
 
         Directory.Delete(tempDir);
@@ -86,7 +72,6 @@ public class NonSeekableDiskBudgetTests
         return value;
     }
 
-    /// <summary>Non-seekable producer of a valid PNG followed by padding up to the configured total size.</summary>
     private sealed class ObservingPngStream : Stream
     {
         private readonly byte[] _header = TestFixtures.Png(1, 1);

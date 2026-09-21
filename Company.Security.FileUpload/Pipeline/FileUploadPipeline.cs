@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
@@ -17,18 +16,14 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
 {
     private readonly SemaphoreSlim _concurrencySemaphore;
     private readonly SemaphoreSlim _validationSemaphore;
-    private readonly int _maxConcurrentValidations;
-    private readonly int _maxQueuedValidations;
     private readonly IFileDetectionService _detectionService;
     private readonly IReadOnlyList<IFileValidator> _validators;
     private readonly IMalwareScanner? _malwareScanner;
-    private readonly ILogger? _logger;
 
     public FileUploadPipeline(
         IFileDetectionService detectionService,
         IEnumerable<IFileValidator> validators,
         IMalwareScanner? malwareScanner = null,
-        ILogger? logger = null,
         int maxConcurrentUploads = 10,
         int maxConcurrentValidations = 32,
         int maxQueuedValidations = 32)
@@ -39,10 +34,7 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
         _detectionService = detectionService;
         _validators = validators.ToArray();
         _malwareScanner = malwareScanner;
-        _logger = logger;
         _concurrencySemaphore = new SemaphoreSlim(maxConcurrentUploads, maxConcurrentUploads);
-        _maxConcurrentValidations = maxConcurrentValidations;
-        _maxQueuedValidations = maxQueuedValidations;
         _validationSemaphore = new SemaphoreSlim(maxQueuedValidations + maxConcurrentValidations, maxQueuedValidations + maxConcurrentValidations);
     }
 
@@ -221,9 +213,6 @@ public sealed class FileUploadPipeline : IFileUploadPipeline
         if (source.CanSeek)
             return (source, false);
 
-        // Non-seekable streams always buffer to a temp file we own, never fully
-        // into RAM. A large upload or a slow producer must not inflate the heap;
-        // the temp file is deleted by us on dispose (not left to the OS).
         return await BufferToTempFileAsync(source, policy, cancellationToken);
     }
 

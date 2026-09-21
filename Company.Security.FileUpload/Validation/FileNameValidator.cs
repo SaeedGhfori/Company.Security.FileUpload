@@ -15,7 +15,6 @@ public sealed class FileNameValidator : IFileValidator
 
         var policy = request.Policy ?? throw new InvalidOperationException("FileUploadRequest requires a Policy.");
         var errors = new List<FileValidationError>();
-        var warnings = new List<string>();
         var fileName = request.OriginalFileName ?? string.Empty;
         var decodedFileName = ExtensionResolver.DecodeUrlEncoding(fileName);
 
@@ -86,15 +85,9 @@ public sealed class FileNameValidator : IFileValidator
                 "The file has multiple extensions which is not allowed by policy."));
         }
 
-        if (errors.Count == 0)
-        {
-            return Task.FromResult(FileValidationResult.Success(detectedType, StreamHelper.GetLength(stream)));
-        }
-
-        var result = FileValidationResult.Failure(errors);
-        foreach (var warning in warnings)
-            result = result.AddWarning(warning);
-        return Task.FromResult(result);
+        return Task.FromResult(errors.Count == 0
+            ? FileValidationResult.Success(detectedType, StreamHelper.GetLength(stream))
+            : FileValidationResult.Failure(errors));
     }
 
     private static (string Name, string Extension) SplitNameAndExtension(string fileName)

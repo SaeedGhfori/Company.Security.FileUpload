@@ -8,7 +8,6 @@ public class DetectionTests
 {
     private readonly FileTypeResolver _resolver = new();
 
-    // OWASP: File Type Validation / Reject unknown content (OWASP File Upload Cheat Sheet)
     [Theory]
     [InlineData(0, "PNG", ".png", FileTypeCategory.Image)]
     [InlineData(1, "JPEG", ".jpg", FileTypeCategory.Image)]
@@ -36,7 +35,6 @@ public class DetectionTests
         Assert.Equal(category, result.Category);
     }
 
-    // OWASP: File Type Validation (magic bytes, container inspection)
     [Fact]
     public async Task Detect_OoxmlZip_ResolvesToXlsx()
     {
@@ -72,7 +70,6 @@ public class DetectionTests
         Assert.Equal(FileTypeCategory.Video, result.Category);
     }
 
-    // OWASP: Do not trust the Content-Type header
     [Fact]
     public async Task Detect_DoesNotTrustDeclaredMime()
     {
@@ -96,7 +93,6 @@ public class DetectionTests
         Assert.Equal(FileTypeCategory.Unknown, result.Category);
     }
 
-    // OWASP: Extension mismatch detection
     [Fact]
     public async Task Detect_PngBytesNamedJpg_FlagsMismatch()
     {
