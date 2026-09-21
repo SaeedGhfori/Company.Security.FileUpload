@@ -23,8 +23,6 @@ public sealed class FileSignatureValidator : IFileValidator
             {
                 case UnknownFilePolicy.Reject:
                 case UnknownFilePolicy.Quarantine:
-                    // Quarantine is intentionally identical to Reject here: this
-                    // library only validates and never stores a file aside.
                     errors.Add(new FileValidationError(
                         FileValidationErrorCode.SignatureNotDetected,
                         "No known file signature was detected for this file."));

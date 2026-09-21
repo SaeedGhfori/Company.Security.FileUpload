@@ -12,11 +12,6 @@ public sealed class ArchiveStructureValidator : IFileValidator
     private const long ZipBombDefaultRatio = 100;
     private const long ZipBombMinimumAbsoluteSize = 10 * 1024 * 1024;
 
-    // When the absolute extracted-size limit is left at its 0 ("unset") default,
-    // we still enforce one so a zip-bomb with a modest ratio (e.g. 50x) but huge
-    // total uncompressed size cannot just cruise past the ratio check. The cap is
-    // a multiple of the per-file size limit, which is the closest safe reference
-    // we have without a second policy knob.
     private const int DefaultExtractedSizeMultiple = 10;
 
     private static readonly string[] NestedContainerExtensions = { ".zip", ".7z", ".rar", ".gz", ".tar", ".tgz" };
@@ -73,9 +68,6 @@ public sealed class ArchiveStructureValidator : IFileValidator
                 return FileValidationResult.Failure(errors);
             }
 
-            // Effective absolute cap on extracted size. When the policy leaves it
-            // at its 0 default, we fall back to a safe multiple of the per-file
-            // size limit so ratio-only zip-bomb evasion is not possible.
             var effectiveMaxExtracted = policy.Structures.ArchiveMaxExtractedSize > 0
                 ? policy.Structures.ArchiveMaxExtractedSize
                 : policy.FileSizes.MaxFileSizeBytes * DefaultExtractedSizeMultiple;
@@ -172,12 +164,6 @@ public sealed class ArchiveStructureValidator : IFileValidator
         {
             using var entryStream = entry.Open();
 
-            // Cap the nested payload into a single rented buffer and view it
-            // directly, so ZipArchive needs no second 512KB copy on the LOH.
-            // IMPORTANT: the buffer is returned only after the recursion has
-            // finished consuming it — returning it in the inner finally would
-            // free the array back to the pool while the child levels might
-            // re-rent it, corrupting the child reads.
             var buffer = ArrayPool<byte>.Shared.Rent(NestedArchiveReadLimit);
             try
             {

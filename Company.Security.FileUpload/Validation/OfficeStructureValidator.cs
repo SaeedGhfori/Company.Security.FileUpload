@@ -118,9 +118,6 @@ public sealed class OfficeStructureValidator : IFileValidator
                 return true;
         }
 
-        // Check only the macro markers. Reading is bounded to readLimit to avoid
-        // inflating the heap from a maliciously large [Content_Types].xml; a
-        // truncated read keeps macro detection enabled one direction only.
         var contentTypes = archive.GetEntry("[Content_Types].xml");
         if (contentTypes is not null)
         {
@@ -156,7 +153,6 @@ public sealed class OfficeStructureValidator : IFileValidator
             }
             catch (InvalidDataException)
             {
-                // treat as no macro content
             }
         }
 

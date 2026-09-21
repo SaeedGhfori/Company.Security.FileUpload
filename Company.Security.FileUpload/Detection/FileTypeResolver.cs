@@ -168,27 +168,15 @@ public sealed class FileTypeResolver : IFileDetectionService
         if (entryCount is not null && entryCount > MaxDetectZipEntryCount)
             return null;
 
-        // Fast path: in a normal OOXML package, [Content_Types].xml is the first
-        // (or very early) local-file entry, so its name and the format markers
-        // are already visible in the leading prefix captured for detection. We
-        // avoid opening a full ZipArchive on the stream (which seeks to the tail,
-        // reads the central directory, and materializes every entry) for this
-        // common case.
         var fromPrefix = DetectOfficeFromPrefix(prefix);
         if (fromPrefix is not null)
             return fromPrefix;
 
-        // Fallback for OOXML packages whose [Content_Types].xml sits after the
-        // leading prefix: keep the historical ZipArchive path so detection stays
-        // correct for unusual-but-valid packages. The stream must still be
-        // seekable and bounded (guarded above).
         return TryDetectZipContainerWithArchive(stream, cancellationToken);
     }
 
     private static FileSignature? DetectOfficeFromPrefix(byte[] prefix)
     {
-        // All markers are pure ASCII, so a byte-level search over the captured
-        // prefix avoids an allocation for an ASCII string copy in the hot path.
         var span = prefix.AsSpan();
 
         if (span.IndexOf("[Content_Types].xml"u8) < 0)

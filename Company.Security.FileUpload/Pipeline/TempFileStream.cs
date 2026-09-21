@@ -53,9 +53,6 @@ internal sealed class ManagedTempFileStream : Stream
 
     private void TryDelete()
     {
-        // FileOptions.DeleteOnClose already removes the file when the handle is
-        // closed. The explicit delete is a harmless no-op that also covers
-        // platforms/filesystems where DeleteOnClose is best-effort.
         try { if (File.Exists(_path)) File.Delete(_path); } catch { }
     }
 }
