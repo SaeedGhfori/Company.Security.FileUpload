@@ -1,6 +1,3 @@
-using System.IO;
-using System.Threading;
-using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
 
 namespace Company.Security.FileUpload.Tests;

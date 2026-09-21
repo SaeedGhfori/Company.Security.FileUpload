@@ -1,6 +1,6 @@
-using System.Buffers;
 using Company.Security.FileUpload.Core.Constants;
 using Company.Security.FileUpload.Core.Models;
+using System.Buffers;
 
 namespace Company.Security.FileUpload.Detection;
 

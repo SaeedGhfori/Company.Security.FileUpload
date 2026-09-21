@@ -5,11 +5,6 @@ using Company.Security.FileUpload.Detection;
 using Company.Security.FileUpload.Pipeline;
 using Company.Security.FileUpload.Validation;
 using System.Buffers;
-using System.IO;
-using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
-using Xunit;
 
 namespace Company.Security.FileUpload.Tests;
 
@@ -161,7 +156,7 @@ public class ResourceExhaustionTests
         };
 
         // Act & Assert
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => 
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             NewPipeline().ProcessAsync(request, cts.Token));
 
         // Cleanup - cancellation should not leak temp files

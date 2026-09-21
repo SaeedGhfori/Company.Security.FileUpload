@@ -1,7 +1,7 @@
+using Company.Security.FileUpload.Core.Models;
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
-using Company.Security.FileUpload.Core.Models;
 
 namespace Company.Security.FileUpload.Tests;
 

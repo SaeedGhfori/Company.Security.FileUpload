@@ -1,8 +1,8 @@
-using System.Buffers;
-using System.Text;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
+using System.Buffers;
+using System.Text;
 
 namespace Company.Security.FileUpload.Validation;
 

@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace Company.Security.FileUpload.Tests;
 
 internal sealed class NonSeekableStream : Stream

@@ -1,9 +1,9 @@
-using System.Buffers;
-using System.IO.Compression;
-using System.Text;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
+using System.Buffers;
+using System.IO.Compression;
+using System.Text;
 
 namespace Company.Security.FileUpload.Detection;
 
@@ -23,18 +23,27 @@ public sealed class FileTypeResolver : IFileDetectionService
 
     private static readonly FileSignature DocxSignature = new()
     {
-        FormatName = "DOCX", Category = FileTypeCategory.Office, Extension = ".docx",
-        MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document", Priority = 100
+        FormatName = "DOCX",
+        Category = FileTypeCategory.Office,
+        Extension = ".docx",
+        MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        Priority = 100
     };
     private static readonly FileSignature XlsxSignature = new()
     {
-        FormatName = "XLSX", Category = FileTypeCategory.Office, Extension = ".xlsx",
-        MimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Priority = 100
+        FormatName = "XLSX",
+        Category = FileTypeCategory.Office,
+        Extension = ".xlsx",
+        MimeType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        Priority = 100
     };
     private static readonly FileSignature PptxSignature = new()
     {
-        FormatName = "PPTX", Category = FileTypeCategory.Office, Extension = ".pptx",
-        MimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation", Priority = 100
+        FormatName = "PPTX",
+        Category = FileTypeCategory.Office,
+        Extension = ".pptx",
+        MimeType = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        Priority = 100
     };
 
     private readonly FileSignatureDetector _detector;

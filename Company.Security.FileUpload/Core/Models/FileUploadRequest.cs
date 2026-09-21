@@ -1,5 +1,3 @@
-using Company.Security.FileUpload.Core.Enums;
-
 namespace Company.Security.FileUpload.Core.Models;
 
 public sealed class FileUploadRequest

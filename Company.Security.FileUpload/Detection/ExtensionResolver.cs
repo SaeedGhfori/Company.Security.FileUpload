@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace Company.Security.FileUpload.Detection;
 
 public static class ExtensionResolver

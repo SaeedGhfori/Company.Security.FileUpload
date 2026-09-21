@@ -1,6 +1,5 @@
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Detection;
-using Company.Security.FileUpload.Tests;
 
 namespace Company.Security.FileUpload.Tests;
 

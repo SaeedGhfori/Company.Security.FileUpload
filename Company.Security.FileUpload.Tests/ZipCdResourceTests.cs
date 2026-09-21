@@ -1,5 +1,5 @@
-using System.IO.Compression;
 using Company.Security.FileUpload.Detection;
+using System.IO.Compression;
 
 namespace Company.Security.FileUpload.Tests;
 

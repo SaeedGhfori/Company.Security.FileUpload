@@ -1,8 +1,7 @@
 using Company.Security.FileUpload;
-using Company.Security.FileUpload.Tests;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Models;
-using Company.Security.FileUpload.Pipeline;
+using Company.Security.FileUpload.Tests;
 
 var pipeline = new FileUploadPipelineBuilder()
     .UseDefaultDetection()

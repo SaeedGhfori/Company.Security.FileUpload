@@ -1,5 +1,5 @@
-using System.Collections.ObjectModel;
 using Company.Security.FileUpload.Core.Enums;
+using System.Collections.ObjectModel;
 
 namespace Company.Security.FileUpload.Core.Models;
 

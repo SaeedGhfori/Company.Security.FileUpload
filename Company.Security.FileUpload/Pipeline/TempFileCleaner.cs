@@ -1,5 +1,3 @@
-using Company.Security.FileUpload.Core.Models;
-
 namespace Company.Security.FileUpload.Pipeline;
 
 public sealed class TempFileCleaner

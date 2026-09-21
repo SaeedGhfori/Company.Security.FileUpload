@@ -1,14 +1,10 @@
-using System.Buffers;
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 using Company.Security.FileUpload.Core.Enums;
 using Company.Security.FileUpload.Core.Interfaces;
 using Company.Security.FileUpload.Core.Models;
 using Company.Security.FileUpload.Core.Policies;
 using Company.Security.FileUpload.Detection;
+using System.Buffers;
+using System.Diagnostics;
 
 namespace Company.Security.FileUpload.Pipeline;
 
